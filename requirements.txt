@@ -1,0 +1,10 @@
+mcp
+httpx
+pillow
+aiofiles
+asyncio-mqtt
+pydantic
+uvloop
+fastapi
+uvicorn[standard]
+python-dotenv

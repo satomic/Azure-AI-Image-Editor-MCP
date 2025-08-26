@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg
+*.egg-info/
+dist/
+build/
+*.so
+*.log
+*.sqlite3
+*.db
+*.env
+venv/
+ENV/
+.envrc
+
+# VS Code
+.vscode/
+.history/
+
+# macOS
+.DS_Store
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Test and coverage
+.coverage
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+.cache/
+
+# Others
+*.bak
+*.swp
+*.tmp
+*.orig
+
+# Azure specific
+*.azure/
+tmp/
