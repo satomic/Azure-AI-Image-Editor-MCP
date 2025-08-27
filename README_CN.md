@@ -127,7 +127,7 @@ python src/http_server.py
 使用智能尺寸保持功能编辑现有图片
 
 **参数**：
-- `image_path`（必需）：要编辑的图片文件路径
+- `image_data`（必需）：Base64编码的图片数据
 - `prompt`（必需）：描述如何编辑图片的英文文字提示
 - `size`（可选）：输出图片尺寸，如果未指定则使用原图尺寸
 - `output_path`（可选）：输出文件路径，如果不提供则返回base64编码的图片
@@ -137,7 +137,7 @@ python src/http_server.py
 {
   "name": "edit_image",
   "arguments": {
-    "image_path": "/path/to/input/image.png",
+    "image_data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
     "prompt": "Make this black and white",
     "output_path": "/path/to/output/edited_image.png"
   }
@@ -163,13 +163,13 @@ audit/
 └── 20250826_143052_a1b2c3d4_anonymous_edit_image/
     ├── request.json
     ├── response.json
-    ├── input_original.jpg   # 原始输入图片
-    ├── result.png          # 编辑结果（未指定output_path时）
-    └── output_edited.jpg   # 编辑结果（指定output_path时）
+    ├── input_base64_data.png     # 来自base64的原始输入图片
+    ├── result.png               # 编辑结果（未指定output_path时）
+    └── output_edited.jpg        # 编辑结果（指定output_path时）
 ```
 
 ### 审计文件命名规则：
-- **输入文件**: `input_{原始文件名}`
+- **输入文件**: `input_base64_data.png`
 - **结果文件（无output_path）**: `result.png`
 - **输出文件（有output_path）**: `output_{文件名}`
 

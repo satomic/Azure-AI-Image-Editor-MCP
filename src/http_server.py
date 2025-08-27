@@ -225,18 +225,20 @@ async def log_audit_response(session_dir: str, response_data: Dict[str, Any], im
         await loop.run_in_executor(None, shutil.copy2, output_file_path, str(output_dest))
 
 
-async def copy_input_image_to_audit(session_dir: str, input_image_path: str):
-    """Copy input image to audit session for edit operations"""
-    if not os.path.exists(input_image_path):
-        return
-    
-    session_path = Path(session_dir)
-    input_image_dest = session_path / f"input_{Path(input_image_path).name}"
-    
-    # Use asyncio to run shutil.copy2 in thread pool to avoid blocking
-    import asyncio
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, shutil.copy2, input_image_path, str(input_image_dest))
+async def save_base64_image_to_audit(session_dir: str, image_data: str):
+    """Save base64 image data to audit session"""
+    try:
+        import base64
+        session_path = Path(session_dir)
+        input_image_dest = session_path / "input_base64_data.png"
+        
+        # Decode base64 and save
+        image_bytes = base64.b64decode(image_data)
+        async with aiofiles.open(input_image_dest, 'wb') as f:
+            await f.write(image_bytes)
+    except Exception as e:
+        # Log error but don't fail the main operation
+        logger.warning(f"Failed to save base64 image to audit: {str(e)}")
 
 
 # Create FastAPI application
@@ -342,9 +344,9 @@ async def handle_mcp_request(request: Request):
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "image_path": {
+                            "image_data": {
                                 "type": "string",
-                                "description": "Path to the image file to edit"
+                                "description": "Base64 encoded image data"
                             },
                             "prompt": {
                                 "type": "string",
@@ -360,7 +362,7 @@ async def handle_mcp_request(request: Request):
                                 "description": "Optional output file path"
                             }
                         },
-                        "required": ["image_path", "prompt"]
+                        "required": ["image_data", "prompt"]
                     }
                 }
             ]
@@ -511,24 +513,31 @@ async def handle_edit_image(arguments: Dict[str, Any]):
     session_dir = await create_audit_session("edit_image")
     
     try:
-        image_path = arguments.get("image_path", "")
+        image_data = arguments.get("image_data")
         prompt = arguments.get("prompt", "") + " (and all other elements exactly the same)"
         size = arguments.get("size")  # Optional size override
         output_path = arguments.get("output_path")
         
+        # Validate input parameters
+        if not image_data:
+            error_msg = "image_data parameter is required"
+            logger.error(error_msg)
+            await log_audit_response(session_dir, {"error": error_msg})
+            return [{"type": "text", "text": error_msg}]
+        
         # Log request to audit
         await log_audit_request(session_dir, {
             "operation": "edit_image",
-            "image_path": image_path,
+            "has_image_data": bool(image_data),
             "prompt": prompt,
             "size": size,
             "output_path": output_path
         })
         
-        # Copy input image to audit session
-        await copy_input_image_to_audit(session_dir, image_path)
+        # Save base64 image data to audit session
+        await save_base64_image_to_audit(session_dir, image_data)
         
-        logger.info(f"Image editing request: image_path='{image_path}', prompt='{prompt}', output_path={output_path}, audit_session={session_dir}")
+        logger.info(f"Image editing request: image_data=<base64>, prompt='{prompt}', output_path={output_path}, audit_session={session_dir}")
         
         # Get Azure configuration
         try:
@@ -546,13 +555,6 @@ async def handle_edit_image(arguments: Dict[str, Any]):
             await log_audit_response(session_dir, {"error": error_msg})
             return [{"type": "text", "text": error_msg}]
         
-        # Check if input file exists
-        if not os.path.exists(image_path):
-            error_msg = f"Error: Image file not found {image_path}"
-            logger.error(f"Input file does not exist: {image_path}")
-            await log_audit_response(session_dir, {"error": error_msg})
-            return [{"type": "text", "text": error_msg}]
-        
         async with AzureImageGenerator(
             base_url=azure_config["base_url"],
             api_key=azure_config["api_key"],
@@ -561,7 +563,7 @@ async def handle_edit_image(arguments: Dict[str, Any]):
         ) as generator:
             
             result = await generator.edit_image(
-                image_path=image_path,
+                image_data=image_data,
                 prompt=prompt,
                 size=size,
                 output_path=output_path
@@ -569,16 +571,24 @@ async def handle_edit_image(arguments: Dict[str, Any]):
             
             if output_path:
                 logger.info(f"Edited image saved to file: {result}")
-                response_data = {"success": True, "output_file": result, "input_file": image_path}
+                response_data = {
+                    "success": True, 
+                    "output_file": result, 
+                    "input_source": "base64_data"
+                }
                 await log_audit_response(session_dir, response_data, output_file_path=result)
                 return [{"type": "text", "text": f"Image successfully edited and saved to: {result}"}]
             else:
                 image_b64 = base64.b64encode(result).decode('utf-8')
                 logger.info(f"Image editing successful, returning base64 data (size: {len(result)} bytes)")
-                response_data = {"success": True, "image_size_bytes": len(result), "input_file": image_path}
+                response_data = {
+                    "success": True, 
+                    "image_size_bytes": len(result), 
+                    "input_source": "base64_data"
+                }
                 await log_audit_response(session_dir, response_data, image_data=result)
                 return [
-                    {"type": "text", "text": f"Image editing successful, edit prompt: '{prompt}', source file: {image_path}"},
+                    {"type": "text", "text": f"Image editing successful, edit prompt: '{prompt}', source: base64 data"},
                     {"type": "image", "data": image_b64, "mimeType": "image/png"}
                 ]
                 

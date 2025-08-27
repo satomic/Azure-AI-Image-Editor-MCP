@@ -87,8 +87,8 @@ class AzureImageGenerator:
 
     async def edit_image(
         self, 
-        image_path: str, 
-        prompt: str,
+        image_data: str,
+        prompt: str = "",
         size: Optional[str] = None,
         output_path: Optional[str] = None
     ) -> Union[bytes, str]:
@@ -96,7 +96,7 @@ class AzureImageGenerator:
         Edit image
         
         Args:
-            image_path: Input image path
+            image_data: Base64 encoded image data
             prompt: Edit prompt
             size: Optional size override, if not provided uses original image dimensions
             output_path: Optional output path, saves file if provided
@@ -113,20 +113,23 @@ class AzureImageGenerator:
         params = {"api-version": "2025-04-01-preview"}
         
         try:
-            # Read image file
-            async with aiofiles.open(image_path, 'rb') as f:
-                image_data = await f.read()
+            # Validate input parameters
+            if not image_data:
+                raise Exception("image_data parameter is required")
+            
+            # Decode from base64
+            raw_image_data = base64.b64decode(image_data)
             
             # Get original image dimensions if size not specified
             if not size:
-                with Image.open(io.BytesIO(image_data)) as img:
+                with Image.open(io.BytesIO(raw_image_data)) as img:
                     width, height = img.size
                     size = f"{width}x{height}"
             
             # Prepare multipart form data
             files = {
                 "model": (None, self.model),
-                "image": ("image.png", image_data, "image/png"),
+                "image": ("image.png", raw_image_data, "image/png"),
                 "prompt": (None, prompt),
                 "size": (None, size)
             }

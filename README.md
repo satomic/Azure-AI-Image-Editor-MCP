@@ -127,7 +127,7 @@ Generate images from text prompts
 Edit existing images with intelligent dimension preservation
 
 **Parameters**:
-- `image_path` (required): Path to the image file to edit
+- `image_data` (required): Base64 encoded image data
 - `prompt` (required): English text description of how to edit the image
 - `size` (optional): Output image size, uses original dimensions if not specified
 - `output_path` (optional): Output file path, returns base64 encoded image if not provided
@@ -137,7 +137,7 @@ Edit existing images with intelligent dimension preservation
 {
   "name": "edit_image",
   "arguments": {
-    "image_path": "/path/to/input/image.png",
+    "image_data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
     "prompt": "Make this black and white",
     "output_path": "/path/to/output/edited_image.png"
   }
@@ -163,13 +163,13 @@ audit/
 └── 20250826_143052_a1b2c3d4_anonymous_edit_image/
     ├── request.json
     ├── response.json
-    ├── input_original.jpg   # Original input image
-    ├── result.png          # Edited result (when no output_path)
-    └── output_edited.jpg   # Edited result (when output_path specified)
+    ├── input_base64_data.png     # Original input image from base64
+    ├── result.png               # Edited result (when no output_path)
+    └── output_edited.jpg        # Edited result (when output_path specified)
 ```
 
 ### Audit File Naming Convention:
-- **Input files**: `input_{original_filename}`
+- **Input files**: `input_base64_data.png`
 - **Result files (no output_path)**: `result.png`
 - **Output files (with output_path)**: `output_{filename}`
 

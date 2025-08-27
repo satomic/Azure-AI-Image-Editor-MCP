@@ -1,1 +1,2 @@
-1. 这个项目配置了.venv，所有操作必须都先激活一下虚拟环境
+1. This project has .venv configured, and all operations must first activate the virtual environment
+2. Each generated image should be saved to the tmp folder
