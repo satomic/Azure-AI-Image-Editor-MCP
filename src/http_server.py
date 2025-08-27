@@ -13,6 +13,9 @@ import uvicorn
 import json
 import logging
 import re
+import uuid
+import shutil
+import aiofiles
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from pathlib import Path
@@ -67,6 +70,7 @@ def get_azure_config():
     - AZURE_BASE_URL: Base URL for Azure AI service
     - AZURE_API_KEY: API key for Azure AI service
     - AZURE_DEPLOYMENT_NAME: Deployment model name
+    - AZURE_MODEL: Model name (optional, defaults to flux.1-kontext-pro)
     
     Raises:
         ValueError: When required environment variables are not set
@@ -78,6 +82,11 @@ def get_azure_config():
             "AZURE_BASE_URL": "Base URL for Azure AI service",
             "AZURE_API_KEY": "API key for Azure AI service", 
             "AZURE_DEPLOYMENT_NAME": "Deployment model name"
+        }
+        
+        # Optional environment variables
+        optional_vars = {
+            "AZURE_MODEL": "Model name (defaults to flux.1-kontext-pro)"
         }
         
         missing_vars = []
@@ -95,6 +104,17 @@ def get_azure_config():
                     "AZURE_DEPLOYMENT_NAME": "deployment_name"
                 }
                 config[key_map[var_name]] = value.strip()
+        
+        # Handle optional variables
+        for var_name, description in optional_vars.items():
+            value = os.getenv(var_name)
+            if value and value.strip():
+                if var_name == "AZURE_MODEL":
+                    config["model"] = value.strip()
+            else:
+                # Set defaults for optional variables
+                if var_name == "AZURE_MODEL":
+                    config["model"] = "flux.1-kontext-pro"
         
         if missing_vars:
             error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
@@ -144,6 +164,79 @@ def validate_image_size(size: str) -> bool:
     """Validate image size format"""
     supported_sizes = ["1024x1024", "1792x1024", "1024x1792"]
     return size in supported_sizes
+
+
+
+async def create_audit_session(operation_type: str) -> str:
+    """Create a new audit session and return session ID"""
+    session_id = str(uuid.uuid4())
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # Create audit directory structure
+    audit_base_dir = Path("audit")
+    audit_base_dir.mkdir(exist_ok=True)
+    
+    session_dir_name = f"{timestamp}_{session_id[:8]}_anonymous_{operation_type}"
+    session_dir = audit_base_dir / session_dir_name
+    session_dir.mkdir(exist_ok=True)
+    
+    return str(session_dir)
+
+
+async def log_audit_request(session_dir: str, request_data: Dict[str, Any]):
+    """Log the request data to audit session"""
+    session_path = Path(session_dir)
+    request_file = session_path / "request.json"
+    
+    audit_data = {
+        "timestamp": datetime.now().isoformat(),
+        "request": request_data
+    }
+    
+    async with aiofiles.open(request_file, 'w', encoding='utf-8') as f:
+        await f.write(json.dumps(audit_data, indent=2, ensure_ascii=False))
+
+
+async def log_audit_response(session_dir: str, response_data: Dict[str, Any], image_data: Optional[bytes] = None, output_file_path: Optional[str] = None):
+    """Log the response data and image to audit session"""
+    session_path = Path(session_dir)
+    response_file = session_path / "response.json"
+    
+    audit_data = {
+        "timestamp": datetime.now().isoformat(),
+        "response": response_data
+    }
+    
+    # Save response JSON
+    async with aiofiles.open(response_file, 'w', encoding='utf-8') as f:
+        await f.write(json.dumps(audit_data, indent=2, ensure_ascii=False))
+    
+    # Save image if provided as bytes
+    if image_data:
+        image_file = session_path / "result.png"
+        async with aiofiles.open(image_file, 'wb') as f:
+            await f.write(image_data)
+    
+    # Copy output file if provided as file path
+    if output_file_path and os.path.exists(output_file_path):
+        import asyncio
+        loop = asyncio.get_event_loop()
+        output_dest = session_path / f"output_{Path(output_file_path).name}"
+        await loop.run_in_executor(None, shutil.copy2, output_file_path, str(output_dest))
+
+
+async def copy_input_image_to_audit(session_dir: str, input_image_path: str):
+    """Copy input image to audit session for edit operations"""
+    if not os.path.exists(input_image_path):
+        return
+    
+    session_path = Path(session_dir)
+    input_image_dest = session_path / f"input_{Path(input_image_path).name}"
+    
+    # Use asyncio to run shutil.copy2 in thread pool to avoid blocking
+    import asyncio
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, shutil.copy2, input_image_path, str(input_image_dest))
 
 
 # Create FastAPI application
@@ -257,6 +350,11 @@ async def handle_mcp_request(request: Request):
                                 "type": "string",
                                 "description": "English description of how to edit the image"
                             },
+                            "size": {
+                                "type": "string",
+                                "description": "Optional size for edited image, if not specified uses original image dimensions",
+                                "enum": ["1024x1024", "1792x1024", "1024x1792"]
+                            },
                             "output_path": {
                                 "type": "string",
                                 "description": "Optional output file path"
@@ -331,24 +429,23 @@ async def health_check():
 
 async def handle_generate_image(arguments: Dict[str, Any]):
     """Handle image generation request"""
+    # Create audit session
+    session_dir = await create_audit_session("generate_image")
+    
     try:
         prompt = arguments.get("prompt", "")
         size = arguments.get("size", os.getenv("DEFAULT_IMAGE_SIZE", "1024x1024"))
         output_path = arguments.get("output_path")
         
-        logger.info(f"Image generation request: prompt='{prompt}', size={size}, output_path={output_path}")
+        # Log request to audit
+        await log_audit_request(session_dir, {
+            "operation": "generate_image",
+            "prompt": prompt,
+            "size": size,
+            "output_path": output_path
+        })
         
-        # Validate prompt is in English
-        if not is_english_text(prompt):
-            error_msg = "Prompt must be in English. Please use English to describe the image you want to generate."
-            logger.warning(f"Non-English prompt rejected: '{prompt}'")
-            return [{"type": "text", "text": error_msg}]
-        
-        # Validate image size
-        if not validate_image_size(size):
-            error_msg = f"Unsupported image size: {size}. Supported sizes: 1024x1024, 1792x1024, 1024x1792"
-            logger.warning(f"Invalid image size: {size}")
-            return [{"type": "text", "text": error_msg}]
+        logger.info(f"Image generation request: prompt='{prompt}', size={size}, output_path={output_path}, audit_session={session_dir}")
         
         # Get Azure configuration
         try:
@@ -356,12 +453,28 @@ async def handle_generate_image(arguments: Dict[str, Any]):
         except (ValueError, Exception) as e:
             error_msg = f"Azure configuration error: {str(e)}"
             logger.error(f"Failed to get Azure configuration: {error_msg}")
+            await log_audit_response(session_dir, {"error": error_msg})
+            return [{"type": "text", "text": error_msg}]
+        
+        # Validate prompt is in English
+        if not is_english_text(prompt):
+            error_msg = "Prompt must be in English. Please use English to describe the image you want to generate."
+            logger.warning(f"Non-English prompt rejected: '{prompt}'")
+            await log_audit_response(session_dir, {"error": error_msg})
+            return [{"type": "text", "text": error_msg}]
+        
+        # Validate image size
+        if not validate_image_size(size):
+            error_msg = f"Unsupported image size: {size}. Supported sizes: 1024x1024, 1792x1024, 1024x1792"
+            logger.warning(f"Invalid image size: {size}")
+            await log_audit_response(session_dir, {"error": error_msg})
             return [{"type": "text", "text": error_msg}]
         
         async with AzureImageGenerator(
             base_url=azure_config["base_url"],
             api_key=azure_config["api_key"],
-            deployment_name=azure_config["deployment_name"]
+            deployment_name=azure_config["deployment_name"],
+            model=azure_config["model"]
         ) as generator:
             
             result = await generator.generate_image(
@@ -372,10 +485,14 @@ async def handle_generate_image(arguments: Dict[str, Any]):
             
             if output_path:
                 logger.info(f"Image saved to file: {result}")
+                response_data = {"success": True, "output_file": result}
+                await log_audit_response(session_dir, response_data, output_file_path=result)
                 return [{"type": "text", "text": f"Image successfully generated and saved to: {result}"}]
             else:
                 image_b64 = base64.b64encode(result).decode('utf-8')
                 logger.info(f"Image generation successful, returning base64 data (size: {len(result)} bytes)")
+                response_data = {"success": True, "image_size_bytes": len(result)}
+                await log_audit_response(session_dir, response_data, image_data=result)
                 return [
                     {"type": "text", "text": f"Image generation successful, prompt: '{prompt}', size: {size}"},
                     {"type": "image", "data": image_b64, "mimeType": "image/png"}
@@ -384,29 +501,34 @@ async def handle_generate_image(arguments: Dict[str, Any]):
     except Exception as e:
         error_msg = f"Error generating image: {str(e)}"
         logger.error(f"Image generation failed: {error_msg}")
+        await log_audit_response(session_dir, {"error": error_msg})
         return [{"type": "text", "text": error_msg}]
 
 
 async def handle_edit_image(arguments: Dict[str, Any]):
     """Handle image editing request"""
+    # Create audit session
+    session_dir = await create_audit_session("edit_image")
+    
     try:
         image_path = arguments.get("image_path", "")
         prompt = arguments.get("prompt", "") + " (and all other elements exactly the same)"
+        size = arguments.get("size")  # Optional size override
         output_path = arguments.get("output_path")
         
-        logger.info(f"Image editing request: image_path='{image_path}', prompt='{prompt}', output_path={output_path}")
+        # Log request to audit
+        await log_audit_request(session_dir, {
+            "operation": "edit_image",
+            "image_path": image_path,
+            "prompt": prompt,
+            "size": size,
+            "output_path": output_path
+        })
         
-        # Validate prompt is in English
-        if not is_english_text(prompt):
-            error_msg = "Prompt must be in English. Please use English to describe how you want to edit the image."
-            logger.warning(f"Non-English prompt rejected: '{prompt}'")
-            return [{"type": "text", "text": error_msg}]
+        # Copy input image to audit session
+        await copy_input_image_to_audit(session_dir, image_path)
         
-        # Check if input file exists
-        if not os.path.exists(image_path):
-            error_msg = f"Error: Image file not found {image_path}"
-            logger.error(f"Input file does not exist: {image_path}")
-            return [{"type": "text", "text": error_msg}]
+        logger.info(f"Image editing request: image_path='{image_path}', prompt='{prompt}', output_path={output_path}, audit_session={session_dir}")
         
         # Get Azure configuration
         try:
@@ -414,26 +536,47 @@ async def handle_edit_image(arguments: Dict[str, Any]):
         except (ValueError, Exception) as e:
             error_msg = f"Azure configuration error: {str(e)}"
             logger.error(f"Failed to get Azure configuration: {error_msg}")
+            await log_audit_response(session_dir, {"error": error_msg})
+            return [{"type": "text", "text": error_msg}]
+        
+        # Validate prompt is in English
+        if not is_english_text(prompt):
+            error_msg = "Prompt must be in English. Please use English to describe how you want to edit the image."
+            logger.warning(f"Non-English prompt rejected: '{prompt}'")
+            await log_audit_response(session_dir, {"error": error_msg})
+            return [{"type": "text", "text": error_msg}]
+        
+        # Check if input file exists
+        if not os.path.exists(image_path):
+            error_msg = f"Error: Image file not found {image_path}"
+            logger.error(f"Input file does not exist: {image_path}")
+            await log_audit_response(session_dir, {"error": error_msg})
             return [{"type": "text", "text": error_msg}]
         
         async with AzureImageGenerator(
             base_url=azure_config["base_url"],
             api_key=azure_config["api_key"],
-            deployment_name=azure_config["deployment_name"]
+            deployment_name=azure_config["deployment_name"],
+            model=azure_config["model"]
         ) as generator:
             
             result = await generator.edit_image(
                 image_path=image_path,
                 prompt=prompt,
+                size=size,
                 output_path=output_path
             )
             
             if output_path:
                 logger.info(f"Edited image saved to file: {result}")
+                response_data = {"success": True, "output_file": result, "input_file": image_path}
+                await log_audit_response(session_dir, response_data, output_file_path=result)
                 return [{"type": "text", "text": f"Image successfully edited and saved to: {result}"}]
             else:
                 image_b64 = base64.b64encode(result).decode('utf-8')
                 logger.info(f"Image editing successful, returning base64 data (size: {len(result)} bytes)")
+                response_data = {"success": True, "image_size_bytes": len(result), "input_file": image_path}
+                await log_audit_response(session_dir, response_data, image_data=result)
                 return [
                     {"type": "text", "text": f"Image editing successful, edit prompt: '{prompt}', source file: {image_path}"},
                     {"type": "image", "data": image_b64, "mimeType": "image/png"}
@@ -442,6 +585,7 @@ async def handle_edit_image(arguments: Dict[str, Any]):
     except Exception as e:
         error_msg = f"Error editing image: {str(e)}"
         logger.error(f"Image editing failed: {error_msg}")
+        await log_audit_response(session_dir, {"error": error_msg})
         return [{"type": "text", "text": error_msg}]
 
 
@@ -454,6 +598,7 @@ def main():
         logger.info("✅ Azure configuration verification successful")
         logger.info(f"   - Service URL: {azure_config['base_url']}")
         logger.info(f"   - Deployment name: {azure_config['deployment_name']}")
+        logger.info(f"   - Model: {azure_config['model']}")
         logger.info(f"   - API key: {'*' * (len(azure_config['api_key']) - 4) + azure_config['api_key'][-4:]}")
     except (ValueError, Exception) as e:
         logger.error(f"❌ Azure configuration verification failed: {str(e)}")
@@ -461,11 +606,14 @@ def main():
         logger.error("  - AZURE_BASE_URL: Base URL for Azure AI service")
         logger.error("  - AZURE_API_KEY: API key for Azure AI service")
         logger.error("  - AZURE_DEPLOYMENT_NAME: Deployment model name")
+        logger.error("Optional environment variables:")
+        logger.error("  - AZURE_MODEL: Model name (defaults to flux.1-kontext-pro)")
         print("\n💡 Tip: Set these environment variables in a .env file, or set them before startup")
         print("Example:")
         print("  export AZURE_BASE_URL='https://your-service.services.ai.azure.com'")
         print("  export AZURE_API_KEY='your-api-key'")
         print("  export AZURE_DEPLOYMENT_NAME='your-deployment-name'")
+        print("  export AZURE_MODEL='flux.1-kontext-pro'")
         sys.exit(1)
     
     host = os.getenv("SERVER_HOST", "127.0.0.1")

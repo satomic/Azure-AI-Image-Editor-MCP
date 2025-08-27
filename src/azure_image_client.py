@@ -9,10 +9,11 @@ import json
 
 
 class AzureImageGenerator:
-    def __init__(self, base_url: str, api_key: str, deployment_name: str):
+    def __init__(self, base_url: str, api_key: str, deployment_name: str, model: str = "flux.1-kontext-pro"):
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key
         self.deployment_name = deployment_name
+        self.model = model
         # Increase timeout duration
         timeout = httpx.Timeout(300.0)  # 5-minute timeout
         self.client = httpx.AsyncClient(timeout=timeout)
@@ -53,7 +54,7 @@ class AzureImageGenerator:
             "prompt": prompt,
             "size": size,
             "n": n,
-            "model": "flux.1-kontext-pro"
+            "model": self.model
         }
         
         params = {"api-version": "2025-04-01-preview"}
@@ -88,6 +89,7 @@ class AzureImageGenerator:
         self, 
         image_path: str, 
         prompt: str,
+        size: Optional[str] = None,
         output_path: Optional[str] = None
     ) -> Union[bytes, str]:
         """
@@ -96,6 +98,7 @@ class AzureImageGenerator:
         Args:
             image_path: Input image path
             prompt: Edit prompt
+            size: Optional size override, if not provided uses original image dimensions
             output_path: Optional output path, saves file if provided
         
         Returns:
@@ -114,11 +117,18 @@ class AzureImageGenerator:
             async with aiofiles.open(image_path, 'rb') as f:
                 image_data = await f.read()
             
+            # Get original image dimensions if size not specified
+            if not size:
+                with Image.open(io.BytesIO(image_data)) as img:
+                    width, height = img.size
+                    size = f"{width}x{height}"
+            
             # Prepare multipart form data
             files = {
-                "model": (None, "flux.1-kontext-pro"),
+                "model": (None, self.model),
                 "image": ("image.png", image_data, "image/png"),
-                "prompt": (None, prompt)
+                "prompt": (None, prompt),
+                "size": (None, size)
             }
             
             response = await self.client.post(

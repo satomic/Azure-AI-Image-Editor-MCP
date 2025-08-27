@@ -6,8 +6,10 @@ This is an MCP (Model Context Protocol) server that supports Azure AI Foundry im
 
 ## Features
 
-1. **Text-to-Image Generation** - Generate high-quality images from text descriptions using Azure AI Foundry's FLUX.1-Kontext-pro model
-2. **Image Editing** - Edit and modify existing images using AI technology
+1. **Text-to-Image Generation** - Generate high-quality images from text descriptions using Azure AI Foundry models
+2. **Image Editing** - Edit and modify existing images with intelligent dimension preservation
+3. **Comprehensive Audit Trail** - Complete request/response logging with image archiving
+4. **Configurable Models** - Support for multiple Azure AI models via environment variables
 
 ## Project Structure
 
@@ -16,41 +18,72 @@ azure-image-editor/
 ├── .venv/                        # Python virtual environment
 ├── src/
 │   ├── azure_image_client.py     # Azure API client
-│   ├── http_server.py            # General HTTP server
-│   └── vscode_http_server.py     # VSCode compatible MCP server (recommended)
+│   └── http_server.py            # HTTP MCP server
+├── tests/                        # Test files
+├── logs/                         # Server logs
+├── audit/                        # Audit logs and images
+├── tmp/                          # Temporary files
 ├── requirements.txt              # Python dependencies
-├── test_azure_client.py          # Azure client tests
-├── simple_test.py                # Simplified test script
-├── test_http_server.py           # HTTP server tests
+├── .env                          # Environment configuration
+├── .env.example                  # Environment configuration template
 └── README.md                     # Project documentation
 ```
 
 ## Installation and Setup
 
-1. **Create virtual environment and install dependencies**:
+1. **Clone and setup environment**:
 ```bash
+git clone <repository-url>
+cd azure-image-editor
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 # or .venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
 
-2. **Configure Azure credentials**:
-   - Update `AZURE_CONFIG` configuration in `src/server.py`
-   - Include your Azure AI Foundry endpoint URL, API key, and model deployment name
+2. **Configure environment variables**:
+```bash
+# Copy example configuration
+cp .env.example .env
+
+# Edit .env file with your Azure credentials
+nano .env  # or use your preferred editor
+```
+
+## Configuration
+
+### Required Environment Variables
+
+```bash
+# Azure AI Foundry Configuration
+AZURE_BASE_URL=https://your-endpoint.services.ai.azure.com
+AZURE_API_KEY=your-api-key-here
+AZURE_DEPLOYMENT_NAME=your-deployment-name
+```
+
+### Optional Environment Variables
+
+```bash
+# Model Configuration
+AZURE_MODEL=flux.1-kontext-pro  # Default model
+
+# Server Configuration
+SERVER_HOST=127.0.0.1
+SERVER_PORT=8000
+DEFAULT_IMAGE_SIZE=1024x1024
+```
 
 ## Usage
 
-### HTTP/MCP Server Mode (Recommended for VSCode)
+### Start the Server
 
-**Start VSCode compatible HTTP server**:
 ```bash
 source .venv/bin/activate
-python src/vscode_http_server.py
+python src/http_server.py
 ```
 
-**Server information**:
-- 📍 **Port**: 8000
+**Server Information**:
+- 📍 **Port**: 8000 (configurable)
 - 🌐 **Server address**: http://localhost:8000
 - 🔧 **Health check**: http://localhost:8000/health
 - 📋 **MCP endpoint**: http://localhost:8000/ (supports POST requests)
@@ -68,52 +101,22 @@ python src/vscode_http_server.py
 }
 ```
 
-### General HTTP API Mode
-
-**Start general HTTP server**:
-```bash
-source .venv/bin/activate
-python src/http_server.py
-```
-
-**HTTP endpoints**:
-- `GET /` - Server information
-- `GET /health` - Health check
-- `GET /tools` - Get available tools list
-- `POST /mcp` - MCP JSON-RPC interface
-- `POST /generate_image` - Direct image generation interface
-- `POST /edit_image` - Direct image editing interface
-
-**Test HTTP server**:
-```bash
-# Test health status
-curl http://localhost:8000/health
-
-# Get tools list
-curl http://localhost:8000/tools
-
-# Generate image
-curl -X POST http://localhost:8000/generate_image \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "A beautiful sunset", "size": "1024x1024"}'
-```
-
 ### Available MCP Tools
 
 #### 1. generate_image
 Generate images from text prompts
 
 **Parameters**:
-- `prompt` (required): Text description for image generation
-- `size` (optional): Image size, supports "1024x1024", "1792x1024", "1024x1792", default "1024x1024"
-- `output_path` (optional): Output file path, returns base64 encoded image data if not provided
+- `prompt` (required): English text description for image generation
+- `size` (optional): Image size - "1024x1024", "1792x1024", "1024x1792", default: "1024x1024"
+- `output_path` (optional): Output file path, returns base64 encoded image if not provided
 
 **Example**:
 ```json
 {
   "name": "generate_image",
   "arguments": {
-    "prompt": "A beautiful sunset over a mountain landscape",
+    "prompt": "A beautiful sunset over mountains",
     "size": "1024x1024",
     "output_path": "/path/to/output/image.png"
   }
@@ -121,12 +124,13 @@ Generate images from text prompts
 ```
 
 #### 2. edit_image
-Edit existing images
+Edit existing images with intelligent dimension preservation
 
 **Parameters**:
 - `image_path` (required): Path to the image file to edit
-- `prompt` (required): Text description of how to edit the image
-- `output_path` (optional): Output file path, returns base64 encoded image data if not provided
+- `prompt` (required): English text description of how to edit the image
+- `size` (optional): Output image size, uses original dimensions if not specified
+- `output_path` (optional): Output file path, returns base64 encoded image if not provided
 
 **Example**:
 ```json
@@ -134,35 +138,59 @@ Edit existing images
   "name": "edit_image",
   "arguments": {
     "image_path": "/path/to/input/image.png",
-    "prompt": "Make this image black and white",
+    "prompt": "Make this black and white",
     "output_path": "/path/to/output/edited_image.png"
   }
 }
 ```
 
+## Audit Logging
+
+Every request creates a comprehensive audit trail in the `audit/` directory:
+
+```
+audit/
+└── 20250826_143052_a1b2c3d4_anonymous_generate_image/
+    ├── request.json      # Complete request data
+    ├── response.json     # Complete response data
+    └── result.png        # Generated image
+    # OR output_filename.png if output_path was specified
+```
+
+For edit operations, both input and output images are always archived:
+```
+audit/
+└── 20250826_143052_a1b2c3d4_anonymous_edit_image/
+    ├── request.json
+    ├── response.json
+    ├── input_original.jpg   # Original input image
+    ├── result.png          # Edited result (when no output_path)
+    └── output_edited.jpg   # Edited result (when output_path specified)
+```
+
+### Audit File Naming Convention:
+- **Input files**: `input_{original_filename}`
+- **Result files (no output_path)**: `result.png`
+- **Output files (with output_path)**: `output_{filename}`
+
 ## Testing
 
-### Test Azure client functionality
+### Test HTTP Server
 ```bash
-source .venv/bin/activate
-python simple_test.py
-```
-
-### Test stdio mode MCP server
-```bash
-source .venv/bin/activate
-python test_mcp_server.py
-```
-
-### Test HTTP server
-```bash
-# Start HTTP server
-source .venv/bin/activate
-python src/http_server.py
-
-# Test in another terminal
+# Health check
 curl http://localhost:8000/health
-curl http://localhost:8000/tools
+
+# Get tools list  
+curl http://localhost:8000 -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
+```
+
+### Run Test Suite
+```bash
+source .venv/bin/activate
+python tests/comprehensive_test.py
+python tests/test_http_server.py
 ```
 
 ## Technical Specifications
@@ -170,55 +198,43 @@ curl http://localhost:8000/tools
 - **Python version**: 3.8+
 - **Main dependencies**:
   - `mcp`: MCP protocol support
-  - `httpx`: HTTP client
-  - `pillow`: Image processing
+  - `httpx`: HTTP client with timeout handling
+  - `pillow`: Image processing and dimension detection
   - `aiofiles`: Async file operations
   - `pydantic`: Data validation
   - `fastapi`: HTTP server framework
   - `uvicorn`: ASGI server
 
-- **Server modes**:
-  - **stdio mode**: Standard MCP protocol, communicates via stdin/stdout
-  - **HTTP mode**: REST API + FastAPI, port 8000
-
 - **Azure AI Foundry**:
-  - Model: FLUX.1-Kontext-pro
+  - Default model: flux.1-kontext-pro (configurable)
   - API version: 2025-04-01-preview
   - Supported image sizes: 1024x1024, 1792x1024, 1024x1792
+  - Timeout: 5 minutes per request
 
-## Security Considerations
+## Security Features
 
-- Azure API keys should be stored securely, do not commit to code repository
-- Recommend using environment variables or configuration files to manage sensitive information
-- Image processing may consume significant resources, recommend setting appropriate timeouts and limits
+1. **Audit Logging**: Complete request/response tracking
+2. **Input Validation**: English-only prompts, size validation
+3. **Error Handling**: Comprehensive error logging and user feedback
+4. **Resource Management**: Timeout controls and memory limits
+
+## Recent Updates
+
+### Version 2.0 Features
+✅ **Image Dimension Preservation**: Edit operations maintain original dimensions unless specified
+✅ **Configurable Models**: Environment variable for Azure model selection  
+✅ **Comprehensive Auditing**: Request/response logging with image archiving
+
+### Changelog
+- **v2.0**: Added intelligent dimension preservation, configurable models, and comprehensive audit logging
+- **v1.0**: Basic image generation and editing functionality
 
 ## Troubleshooting
 
-1. **Timeout errors**: Image generation and editing may take longer time, 2-minute timeout is set
-2. **API errors**: Check if Azure credentials and endpoint URL are correct
-3. **Dependency issues**: Make sure all dependencies are installed in the correct virtual environment
-
-## Development Status
-
-✅ **Completed**:
-- Azure AI Foundry integration
-- Image generation functionality (tested and working)
-- Image editing functionality (basic implementation complete)
-- stdio mode MCP server
-- HTTP/REST API mode server (port 8000)
-- Memory and file output support
-- FastAPI integration and API documentation
-- Health check and monitoring endpoints
-
-⚠️ **Known issues**:
-- Image editing functionality may experience network timeouts in some cases
-- Tool list response in stdio mode needs further debugging
-
-✅ **Test status**:
-- Image generation functionality: Passed ✅
-- HTTP server: Passed ✅ 
-- Health check: Passed ✅
-- Tool list API: Passed ✅
+1. **Timeout Errors**: Image processing has 5-minute timeout, check network connectivity  
+2. **API Errors**: Verify Azure credentials and endpoint URL
+3. **Dependency Issues**: Ensure virtual environment is activated and dependencies installed
+4. **Audit Errors**: Check write permissions for `audit/` directory
 
 ## License
 
