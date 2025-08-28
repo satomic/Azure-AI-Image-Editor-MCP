@@ -47,50 +47,13 @@ Without proper model deployment, the MCP server will not function correctly.
 
 1. **Clone and setup environment**:
 ```bash
-git clone <repository-url>
+git clone https://github.com/satomic/Azure-AI-Image-Editor-MCP.git
 cd azure-image-editor
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 # or .venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
-
-2. **Configure environment variables**:
-```bash
-# Copy example configuration
-cp .env.example .env
-
-# Edit .env file with your Azure credentials
-nano .env  # or use your preferred editor
-```
-
-## Configuration
-
-### Required Environment Variables
-
-**Note**: These values come from your Azure AI Foundry model deployment (see Prerequisites section above).
-
-```bash
-# Azure AI Foundry Configuration
-AZURE_BASE_URL=https://your-endpoint.services.ai.azure.com  # From your deployment endpoint
-AZURE_API_KEY=your-api-key-here                             # From your deployment credentials
-AZURE_DEPLOYMENT_NAME=your-deployment-name                  # The name you gave your deployment
-```
-
-### Optional Environment Variables
-
-```bash
-# Model Configuration
-AZURE_MODEL=flux.1-kontext-pro  # Default model
-
-# API Version
-AZURE_API_VERSION=2025-04-01-preview  # Default API version
-
-# Image Settings
-DEFAULT_IMAGE_SIZE=1024x1024
-```
-
-## Usage
 
 ### Configure VSCode MCP
 
@@ -100,11 +63,25 @@ Add the following to your VSCode MCP configuration:
 {
   "servers": {
     "azure-image-editor": {
-      "command": "python",
+      "command": "/full/path/to/.venv/bin/python",
       "args": ["/full/path/to/azure-image-editor/src/mcp_server.py"],
-      "env": {}
+      "env": {
+        "AZURE_BASE_URL": "https://your-endpoint.services.ai.azure.com", // deployment endpoint
+        "AZURE_API_KEY": "${input:azure-api-key}",
+        "AZURE_DEPLOYMENT_NAME": "FLUX.1-Kontext-pro", // The name you gave your deployment
+        "AZURE_MODEL": "flux.1-kontext-pro", // Default model
+        "AZURE_API_VERSION": "2025-04-01-preview" // Default API version
+      }
     }
-  }
+  },
+  "inputs": [
+    {
+      "id": "azure-api-key",
+      "type": "promptString",
+      "description": "Enter your Azure API Key",
+      "password": "true"
+    }
+  ]
 }
 ```
 
@@ -153,20 +130,6 @@ Edit existing images with intelligent dimension preservation
 }
 ```
 
-## Testing
-
-### Test the MCP Server
-
-```bash
-# Activate virtual environment
-source .venv/bin/activate
-
-# Test the server (requires VSCode MCP or another MCP client)
-python src/mcp_server.py
-```
-
-The server will start and wait for MCP client connections through STDIO.
-
 ## Technical Specifications
 
 - **Python version**: 3.8+
@@ -192,5 +155,4 @@ The server will start and wait for MCP client connections through STDIO.
 4. **Server Connection Issues**: Verify VSCode MCP configuration path is correct
 
 ## License
-
-This project is for learning and testing purposes only. Please comply with Azure AI service terms and conditions.
+MIT License

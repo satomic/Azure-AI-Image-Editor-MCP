@@ -47,50 +47,13 @@ azure-image-editor/
 
 1. **克隆和设置环境**：
 ```bash
-git clone <repository-url>
+git clone https://github.com/satomic/Azure-AI-Image-Editor-MCP.git
 cd azure-image-editor
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 # 或者 .venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
-
-2. **配置环境变量**：
-```bash
-# 复制示例配置
-cp .env.example .env
-
-# 使用你喜欢的编辑器编辑.env文件
-nano .env  # 或使用其他编辑器
-```
-
-## 配置
-
-### 必需的环境变量
-
-**注意**：这些值来自您的Azure AI Foundry模型部署（请参见上面的先决条件部分）。
-
-```bash
-# Azure AI Foundry 配置
-AZURE_BASE_URL=https://your-endpoint.services.ai.azure.com  # 来自您的部署端点
-AZURE_API_KEY=your-api-key-here                             # 来自您的部署凭据
-AZURE_DEPLOYMENT_NAME=your-deployment-name                  # 您为部署指定的名称
-```
-
-### 可选的环境变量
-
-```bash
-# 模型配置
-AZURE_MODEL=flux.1-kontext-pro  # 默认模型
-
-# API版本
-AZURE_API_VERSION=2025-04-01-preview  # 默认API版本
-
-# 图片设置
-DEFAULT_IMAGE_SIZE=1024x1024
-```
-
-## 使用方法
 
 ### 配置VSCode MCP
 
@@ -100,11 +63,25 @@ DEFAULT_IMAGE_SIZE=1024x1024
 {
   "servers": {
     "azure-image-editor": {
-      "command": "python",
-      "args": ["/完整路径/到/azure-image-editor/src/mcp_server.py"],
-      "env": {}
+      "command": "/full/path/to/.venv/bin/python", 
+      "args": ["/full/path/to/azure-image-editor/src/mcp_server.py"],
+      "env": {
+        "AZURE_BASE_URL": "https://your-endpoint.services.ai.azure.com", // 部署端点
+        "AZURE_API_KEY": "${input:azure-api-key}",
+        "AZURE_DEPLOYMENT_NAME": "FLUX.1-Kontext-pro", // 部署指定的名称
+        "AZURE_MODEL": "flux.1-kontext-pro", // 默认模型
+        "AZURE_API_VERSION": "2025-04-01-preview" // 默认API版本
+      }
     }
-  }
+  },
+  "inputs": [
+    {
+      "id": "azure-api-key",
+      "type": "promptString",
+      "description": "Enter your Azure API Key",
+      "password": "true"
+    }
+  ]
 }
 ```
 
@@ -153,20 +130,6 @@ DEFAULT_IMAGE_SIZE=1024x1024
 }
 ```
 
-## 测试
-
-### 测试MCP服务器
-
-```bash
-# 激活虚拟环境
-source .venv/bin/activate
-
-# 测试服务器（需要VSCode MCP或其他MCP客户端）
-python src/mcp_server.py
-```
-
-服务器将启动并通过STDIO等待MCP客户端连接。
-
 ## 技术规格
 
 - **Python版本**: 3.8+
@@ -192,5 +155,4 @@ python src/mcp_server.py
 4. **服务器连接问题**：验证VSCode MCP配置路径是否正确
 
 ## 许可证
-
-此项目仅供学习和测试使用。请遵守Azure AI服务的使用条款和条件。
+MIT License
