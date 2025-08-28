@@ -9,11 +9,12 @@ import json
 
 
 class AzureImageGenerator:
-    def __init__(self, base_url: str, api_key: str, deployment_name: str, model: str = "flux.1-kontext-pro"):
+    def __init__(self, base_url: str, api_key: str, deployment_name: str, model: str = "flux.1-kontext-pro", api_version: str = "2025-04-01-preview"):
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key
         self.deployment_name = deployment_name
         self.model = model
+        self.api_version = api_version
         # Increase timeout duration
         timeout = httpx.Timeout(300.0)  # 5-minute timeout
         self.client = httpx.AsyncClient(timeout=timeout)
@@ -57,7 +58,7 @@ class AzureImageGenerator:
             "model": self.model
         }
         
-        params = {"api-version": "2025-04-01-preview"}
+        params = {"api-version": self.api_version}
         
         try:
             response = await self.client.post(url, json=data, headers=headers, params=params)
@@ -87,7 +88,7 @@ class AzureImageGenerator:
 
     async def edit_image(
         self, 
-        image_data: str,
+        image_path: str,
         prompt: str = "",
         size: Optional[str] = None,
         output_path: Optional[str] = None
@@ -96,7 +97,7 @@ class AzureImageGenerator:
         Edit image
         
         Args:
-            image_data: Base64 encoded image data
+            image_path: Input image path
             prompt: Edit prompt
             size: Optional size override, if not provided uses original image dimensions
             output_path: Optional output path, saves file if provided
@@ -110,26 +111,27 @@ class AzureImageGenerator:
             "Authorization": f"Bearer {self.api_key}"
         }
         
-        params = {"api-version": "2025-04-01-preview"}
+        params = {"api-version": self.api_version}
         
         try:
             # Validate input parameters
-            if not image_data:
-                raise Exception("image_data parameter is required")
+            if not image_path:
+                raise Exception("image_path parameter is required")
             
-            # Decode from base64
-            raw_image_data = base64.b64decode(image_data)
+            # Read image file
+            async with aiofiles.open(image_path, 'rb') as f:
+                image_data = await f.read()
             
             # Get original image dimensions if size not specified
             if not size:
-                with Image.open(io.BytesIO(raw_image_data)) as img:
+                with Image.open(io.BytesIO(image_data)) as img:
                     width, height = img.size
                     size = f"{width}x{height}"
             
             # Prepare multipart form data
             files = {
                 "model": (None, self.model),
-                "image": ("image.png", raw_image_data, "image/png"),
+                "image": ("image.png", image_data, "image/png"),
                 "prompt": (None, prompt),
                 "size": (None, size)
             }

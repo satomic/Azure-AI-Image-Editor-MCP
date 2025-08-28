@@ -7,9 +7,8 @@ This is an MCP (Model Context Protocol) server that supports Azure AI Foundry im
 ## Features
 
 1. **Text-to-Image Generation** - Generate high-quality images from text descriptions using Azure AI Foundry models
-2. **Image Editing** - Edit and modify existing images with intelligent dimension preservation
-3. **Comprehensive Audit Trail** - Complete request/response logging with image archiving
-4. **Configurable Models** - Support for multiple Azure AI models via environment variables
+2. **Image Editing** - Edit and modify existing images
+3. **Configurable Models** - Support for multiple Azure AI models via environment variables
 
 ## Project Structure
 
@@ -18,10 +17,9 @@ azure-image-editor/
 ├── .venv/                        # Python virtual environment
 ├── src/
 │   ├── azure_image_client.py     # Azure API client
-│   └── http_server.py            # HTTP MCP server
+│   └── mcp_server.py             # STDIO MCP server
 ├── tests/                        # Test files
 ├── logs/                         # Server logs
-├── audit/                        # Audit logs and images
 ├── tmp/                          # Temporary files
 ├── requirements.txt              # Python dependencies
 ├── .env                          # Environment configuration
@@ -67,39 +65,32 @@ AZURE_DEPLOYMENT_NAME=your-deployment-name
 # Model Configuration
 AZURE_MODEL=flux.1-kontext-pro  # Default model
 
-# Server Configuration
-SERVER_HOST=127.0.0.1
-SERVER_PORT=8000
+# API Version
+AZURE_API_VERSION=2025-04-01-preview  # Default API version
+
+# Image Settings
 DEFAULT_IMAGE_SIZE=1024x1024
 ```
 
 ## Usage
 
-### Start the Server
+### Configure VSCode MCP
 
-```bash
-source .venv/bin/activate
-python src/http_server.py
-```
+Add the following to your VSCode MCP configuration:
 
-**Server Information**:
-- 📍 **Port**: 8000 (configurable)
-- 🌐 **Server address**: http://localhost:8000
-- 🔧 **Health check**: http://localhost:8000/health
-- 📋 **MCP endpoint**: http://localhost:8000/ (supports POST requests)
-
-**VSCode MCP configuration**:
 ```json
 {
   "servers": {
     "azure-image-editor": {
-      "url": "http://localhost:8000",
-      "type": "http"
+      "command": "python",
+      "args": ["/full/path/to/azure-image-editor/src/mcp_server.py"],
+      "env": {}
     }
-  },
-  "inputs": []
+  }
 }
 ```
+
+**Important**: Replace `/full/path/to/` with the actual absolute path to this project directory.
 
 ### Available MCP Tools
 
@@ -127,7 +118,7 @@ Generate images from text prompts
 Edit existing images with intelligent dimension preservation
 
 **Parameters**:
-- `image_data` (required): Base64 encoded image data
+- `image_path` (required): Path to the image file to edit
 - `prompt` (required): English text description of how to edit the image
 - `size` (optional): Output image size, uses original dimensions if not specified
 - `output_path` (optional): Output file path, returns base64 encoded image if not provided
@@ -137,61 +128,26 @@ Edit existing images with intelligent dimension preservation
 {
   "name": "edit_image",
   "arguments": {
-    "image_data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "image_path": "/path/to/input/image.png",
     "prompt": "Make this black and white",
     "output_path": "/path/to/output/edited_image.png"
   }
 }
 ```
 
-## Audit Logging
-
-Every request creates a comprehensive audit trail in the `audit/` directory:
-
-```
-audit/
-└── 20250826_143052_a1b2c3d4_anonymous_generate_image/
-    ├── request.json      # Complete request data
-    ├── response.json     # Complete response data
-    └── result.png        # Generated image
-    # OR output_filename.png if output_path was specified
-```
-
-For edit operations, both input and output images are always archived:
-```
-audit/
-└── 20250826_143052_a1b2c3d4_anonymous_edit_image/
-    ├── request.json
-    ├── response.json
-    ├── input_base64_data.png     # Original input image from base64
-    ├── result.png               # Edited result (when no output_path)
-    └── output_edited.jpg        # Edited result (when output_path specified)
-```
-
-### Audit File Naming Convention:
-- **Input files**: `input_base64_data.png`
-- **Result files (no output_path)**: `result.png`
-- **Output files (with output_path)**: `output_{filename}`
-
 ## Testing
 
-### Test HTTP Server
-```bash
-# Health check
-curl http://localhost:8000/health
+### Test the MCP Server
 
-# Get tools list  
-curl http://localhost:8000 -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
-```
-
-### Run Test Suite
 ```bash
+# Activate virtual environment
 source .venv/bin/activate
-python tests/comprehensive_test.py
-python tests/test_http_server.py
+
+# Test the server (requires VSCode MCP or another MCP client)
+python src/mcp_server.py
 ```
+
+The server will start and wait for MCP client connections through STDIO.
 
 ## Technical Specifications
 
@@ -202,39 +158,20 @@ python tests/test_http_server.py
   - `pillow`: Image processing and dimension detection
   - `aiofiles`: Async file operations
   - `pydantic`: Data validation
-  - `fastapi`: HTTP server framework
-  - `uvicorn`: ASGI server
+  - `python-dotenv`: Environment variable management
 
 - **Azure AI Foundry**:
   - Default model: flux.1-kontext-pro (configurable)
-  - API version: 2025-04-01-preview
+  - Default API version: 2025-04-01-preview (configurable)
   - Supported image sizes: 1024x1024, 1792x1024, 1024x1792
   - Timeout: 5 minutes per request
-
-## Security Features
-
-1. **Audit Logging**: Complete request/response tracking
-2. **Input Validation**: English-only prompts, size validation
-3. **Error Handling**: Comprehensive error logging and user feedback
-4. **Resource Management**: Timeout controls and memory limits
-
-## Recent Updates
-
-### Version 2.0 Features
-✅ **Image Dimension Preservation**: Edit operations maintain original dimensions unless specified
-✅ **Configurable Models**: Environment variable for Azure model selection  
-✅ **Comprehensive Auditing**: Request/response logging with image archiving
-
-### Changelog
-- **v2.0**: Added intelligent dimension preservation, configurable models, and comprehensive audit logging
-- **v1.0**: Basic image generation and editing functionality
 
 ## Troubleshooting
 
 1. **Timeout Errors**: Image processing has 5-minute timeout, check network connectivity  
 2. **API Errors**: Verify Azure credentials and endpoint URL
 3. **Dependency Issues**: Ensure virtual environment is activated and dependencies installed
-4. **Audit Errors**: Check write permissions for `audit/` directory
+4. **Server Connection Issues**: Verify VSCode MCP configuration path is correct
 
 ## License
 

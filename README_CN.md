@@ -7,9 +7,8 @@
 ## 功能特性
 
 1. **文字生成图片** - 使用Azure AI Foundry模型从文字描述生成高质量图片
-2. **智能图片编辑** - 编辑和修改现有图片，支持智能尺寸保持
-3. **全面审计追踪** - 完整的请求/响应日志记录和图片存档
-4. **可配置模型** - 通过环境变量支持多种Azure AI模型
+2. **智能图片编辑** - 编辑和修改现有图片
+3. **可配置模型** - 通过环境变量支持多种Azure AI模型
 
 ## 项目结构
 
@@ -18,10 +17,9 @@ azure-image-editor/
 ├── .venv/                        # Python虚拟环境
 ├── src/
 │   ├── azure_image_client.py     # Azure API客户端
-│   └── http_server.py            # HTTP MCP服务器
+│   └── mcp_server.py             # STDIO MCP服务器
 ├── tests/                        # 测试文件
 ├── logs/                         # 服务器日志
-├── audit/                        # 审计日志和图片
 ├── tmp/                          # 临时文件
 ├── requirements.txt              # Python依赖
 ├── .env                          # 环境配置
@@ -67,39 +65,32 @@ AZURE_DEPLOYMENT_NAME=your-deployment-name
 # 模型配置
 AZURE_MODEL=flux.1-kontext-pro  # 默认模型
 
-# 服务器配置
-SERVER_HOST=127.0.0.1
-SERVER_PORT=8000
+# API版本
+AZURE_API_VERSION=2025-04-01-preview  # 默认API版本
+
+# 图片设置
 DEFAULT_IMAGE_SIZE=1024x1024
 ```
 
 ## 使用方法
 
-### 启动服务器
+### 配置VSCode MCP
 
-```bash
-source .venv/bin/activate
-python src/http_server.py
-```
+在VSCode MCP配置中添加：
 
-**服务器信息**：
-- 📍 **端口号**: 8000（可配置）
-- 🌐 **服务器地址**: http://localhost:8000
-- 🔧 **健康检查**: http://localhost:8000/health
-- 📋 **MCP端点**: http://localhost:8000/（支持POST请求）
-
-**VSCode MCP配置**：
 ```json
 {
   "servers": {
     "azure-image-editor": {
-      "url": "http://localhost:8000",
-      "type": "http"
+      "command": "python",
+      "args": ["/完整路径/到/azure-image-editor/src/mcp_server.py"],
+      "env": {}
     }
-  },
-  "inputs": []
+  }
 }
 ```
+
+**重要**：将 `/完整路径/到/` 替换为项目目录的实际绝对路径。
 
 ### 可用的MCP工具
 
@@ -127,7 +118,7 @@ python src/http_server.py
 使用智能尺寸保持功能编辑现有图片
 
 **参数**：
-- `image_data`（必需）：Base64编码的图片数据
+- `image_path`（必需）：要编辑的图片文件路径
 - `prompt`（必需）：描述如何编辑图片的英文文字提示
 - `size`（可选）：输出图片尺寸，如果未指定则使用原图尺寸
 - `output_path`（可选）：输出文件路径，如果不提供则返回base64编码的图片
@@ -137,61 +128,26 @@ python src/http_server.py
 {
   "name": "edit_image",
   "arguments": {
-    "image_data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "image_path": "/path/to/input/image.png",
     "prompt": "Make this black and white",
     "output_path": "/path/to/output/edited_image.png"
   }
 }
 ```
 
-## 审计日志
-
-每个请求都会在`audit/`目录中创建全面的审计追踪：
-
-```
-audit/
-└── 20250826_143052_a1b2c3d4_anonymous_generate_image/
-    ├── request.json      # 完整的请求数据
-    ├── response.json     # 完整的响应数据
-    └── result.png        # 生成的图片
-    # 或者 output_filename.png 如果指定了 output_path
-```
-
-对于编辑操作，输入和输出图片都会被存档：
-```
-audit/
-└── 20250826_143052_a1b2c3d4_anonymous_edit_image/
-    ├── request.json
-    ├── response.json
-    ├── input_base64_data.png     # 来自base64的原始输入图片
-    ├── result.png               # 编辑结果（未指定output_path时）
-    └── output_edited.jpg        # 编辑结果（指定output_path时）
-```
-
-### 审计文件命名规则：
-- **输入文件**: `input_base64_data.png`
-- **结果文件（无output_path）**: `result.png`
-- **输出文件（有output_path）**: `output_{文件名}`
-
 ## 测试
 
-### 测试HTTP服务器
-```bash
-# 健康检查
-curl http://localhost:8000/health
+### 测试MCP服务器
 
-# 获取工具列表  
-curl http://localhost:8000 -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
-```
-
-### 运行测试套件
 ```bash
+# 激活虚拟环境
 source .venv/bin/activate
-python tests/comprehensive_test.py
-python tests/test_http_server.py
+
+# 测试服务器（需要VSCode MCP或其他MCP客户端）
+python src/mcp_server.py
 ```
+
+服务器将启动并通过STDIO等待MCP客户端连接。
 
 ## 技术规格
 
@@ -202,39 +158,20 @@ python tests/test_http_server.py
   - `pillow`: 图片处理和尺寸检测
   - `aiofiles`: 异步文件操作
   - `pydantic`: 数据验证
-  - `fastapi`: HTTP服务器框架
-  - `uvicorn`: ASGI服务器
+  - `python-dotenv`: 环境变量管理
 
 - **Azure AI Foundry**:
   - 默认模型: flux.1-kontext-pro（可配置）
-  - API版本: 2025-04-01-preview
+  - 默认API版本: 2025-04-01-preview（可配置）
   - 支持的图片尺寸: 1024x1024, 1792x1024, 1024x1792
   - 超时时间: 每个请求5分钟
-
-## 安全功能
-
-1. **审计日志**：完整的请求/响应跟踪
-2. **输入验证**：仅限英文提示，尺寸验证
-3. **错误处理**：全面的错误日志和用户反馈
-4. **资源管理**：超时控制和内存限制
-
-## 最新更新
-
-### 版本 2.0 功能
-✅ **图片尺寸保持**：编辑操作保持原图尺寸，除非另有指定
-✅ **可配置模型**：通过环境变量选择Azure模型
-✅ **全面审计**：请求/响应日志记录和图片存档
-
-### 更新日志
-- **v2.0**: 添加智能尺寸保持、可配置模型和全面审计日志
-- **v1.0**: 基础图片生成和编辑功能
 
 ## 故障排除
 
 1. **超时错误**：图片处理有5分钟超时，请检查网络连接
 2. **API错误**：验证Azure凭据和端点URL
 3. **依赖问题**：确保虚拟环境已激活且依赖已安装
-4. **审计错误**：检查`audit/`目录的写入权限
+4. **服务器连接问题**：验证VSCode MCP配置路径是否正确
 
 ## 许可证
 
