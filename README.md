@@ -27,6 +27,22 @@ azure-image-editor/
 └── README.md                     # Project documentation
 ```
 
+## Prerequisites
+
+**⚠️ Important**: Before using this MCP server, you must deploy the required model in your Azure AI Foundry environment.
+
+### Azure AI Foundry Model Deployment
+
+1. **Access Azure AI Foundry**: Go to [Azure AI Foundry](https://ai.azure.com/)
+2. **Deploy the model**: Deploy `flux.1-kontext-pro` (or your preferred model) in your Azure AI Foundry workspace
+3. **Get deployment details**: Note down your:
+   - Base URL (endpoint)
+   - API key
+   - Deployment name
+   - Model name
+
+Without proper model deployment, the MCP server will not function correctly.
+
 ## Installation and Setup
 
 1. **Clone and setup environment**:
@@ -52,11 +68,13 @@ nano .env  # or use your preferred editor
 
 ### Required Environment Variables
 
+**Note**: These values come from your Azure AI Foundry model deployment (see Prerequisites section above).
+
 ```bash
 # Azure AI Foundry Configuration
-AZURE_BASE_URL=https://your-endpoint.services.ai.azure.com
-AZURE_API_KEY=your-api-key-here
-AZURE_DEPLOYMENT_NAME=your-deployment-name
+AZURE_BASE_URL=https://your-endpoint.services.ai.azure.com  # From your deployment endpoint
+AZURE_API_KEY=your-api-key-here                             # From your deployment credentials
+AZURE_DEPLOYMENT_NAME=your-deployment-name                  # The name you gave your deployment
 ```
 
 ### Optional Environment Variables

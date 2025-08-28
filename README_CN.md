@@ -27,6 +27,22 @@ azure-image-editor/
 └── README.md                     # 项目文档
 ```
 
+## 先决条件
+
+**⚠️ 重要**：在使用此MCP服务器之前，您必须在Azure AI Foundry环境中部署所需的模型。
+
+### Azure AI Foundry模型部署
+
+1. **访问Azure AI Foundry**：前往 [Azure AI Foundry](https://ai.azure.com/)
+2. **部署模型**：在您的Azure AI Foundry工作区中部署 `flux.1-kontext-pro`（或您偏好的其他模型）
+3. **获取部署详情**：记录以下信息：
+   - 基础URL（端点）
+   - API密钥
+   - 部署名称
+   - 模型名称
+
+如果没有正确部署模型，MCP服务器将无法正常工作。
+
 ## 安装和设置
 
 1. **克隆和设置环境**：
@@ -52,11 +68,13 @@ nano .env  # 或使用其他编辑器
 
 ### 必需的环境变量
 
+**注意**：这些值来自您的Azure AI Foundry模型部署（请参见上面的先决条件部分）。
+
 ```bash
 # Azure AI Foundry 配置
-AZURE_BASE_URL=https://your-endpoint.services.ai.azure.com
-AZURE_API_KEY=your-api-key-here
-AZURE_DEPLOYMENT_NAME=your-deployment-name
+AZURE_BASE_URL=https://your-endpoint.services.ai.azure.com  # 来自您的部署端点
+AZURE_API_KEY=your-api-key-here                             # 来自您的部署凭据
+AZURE_DEPLOYMENT_NAME=your-deployment-name                  # 您为部署指定的名称
 ```
 
 ### 可选的环境变量
