@@ -10,6 +10,11 @@ This is an MCP (Model Context Protocol) server that supports Azure AI Foundry im
 2. **Image Editing** - Edit and modify existing images
 3. **Configurable Models** - Support for multiple Azure AI models via environment variables
 
+## Demo
+Click 👇 to go to the demo on YouTube
+
+[![Using GitHub Copilot & Azure AI Foundry with FLUX 1 Kontext Full Walkthrough for Image Generation Demo](https://img.youtube.com/vi/bnioXb5dd3M/0.jpg)](https://www.youtube.com/watch?v=bnioXb5dd3M)
+
 ## Project Structure
 
 ```

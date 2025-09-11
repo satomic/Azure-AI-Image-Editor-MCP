@@ -10,6 +10,12 @@
 2. **智能图片编辑** - 编辑和修改现有图片
 3. **可配置模型** - 通过环境变量支持多种Azure AI模型
 
+## Demo
+点击👇查看YouTube上的demo
+
+[![Using GitHub Copilot & Azure AI Foundry with FLUX 1 Kontext Full Walkthrough for Image Generation Demo](https://img.youtube.com/vi/bnioXb5dd3M/0.jpg)](https://www.youtube.com/watch?v=bnioXb5dd3M)
+
+
 ## 项目结构
 
 ```
