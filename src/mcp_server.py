@@ -9,13 +9,13 @@ import asyncio
 import base64
 import os
 import sys
-import json
 import logging
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any
 from pathlib import Path
 
 try:
+    import anyio
     from mcp.server import Server, NotificationOptions
     from mcp.server.models import InitializationOptions
     import mcp.server.stdio
@@ -39,6 +39,34 @@ except ImportError as e:
 # Load environment variables
 load_dotenv()
 
+
+class _MemoryStreamFactoryWrapper:
+    """Allow anyio.create_memory_object_stream[...] syntax at runtime."""
+    __slots__ = ("_factory",)
+
+    def __init__(self, factory):
+        self._factory = factory
+
+    def __call__(self, *args, **kwargs):
+        return self._factory(*args, **kwargs)
+
+    def __getitem__(self, _item):
+        return self
+
+    def __getattr__(self, name):
+        return getattr(self._factory, name)
+
+
+def _patch_anyio_memory_stream_factory() -> bool:
+    factory = anyio.create_memory_object_stream
+    if isinstance(factory, _MemoryStreamFactoryWrapper):
+        return False
+    if hasattr(factory, "__getitem__"):
+        return False
+
+    anyio.create_memory_object_stream = _MemoryStreamFactoryWrapper(factory)
+    return True
+
 # Set up logging
 def setup_logging():
     """Setup logging configuration"""
@@ -58,6 +86,9 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 logger = setup_logging()
+
+if _patch_anyio_memory_stream_factory():
+    logger.info("Applied compatibility patch for anyio.create_memory_object_stream")
 
 # Create the MCP server
 server = Server("azure-image-editor")
@@ -156,7 +187,8 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "English description for image generation"
+                        "description": "English description for image generation",
+
                     },
                     "size": {
                         "type": "string",
@@ -166,10 +198,10 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "output_path": {
                         "type": "string",
-                        "description": "Optional output file path"
+                        "description": "absolute output file path"
                     }
                 },
-                "required": ["prompt"]
+                "required": ["prompt", "size", "output_path"]
             },
         ),
         types.Tool(
@@ -193,10 +225,10 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "output_path": {
                         "type": "string",
-                        "description": "Optional output file path"
+                        "description": "absolute output file path"
                     }
                 },
-                "required": ["image_path", "prompt"]
+                "required": ["image_path", "prompt", "size", "output_path"]
             },
         )
     ]
@@ -381,25 +413,38 @@ async def main():
         print("  export AZURE_API_VERSION='2025-04-01-preview'", file=sys.stderr)
         sys.exit(1)
     
-    logger.info(f"🚀 Starting Azure Image Editor MCP STDIO Server")
+    logger.info("🚀 Starting Azure Image Editor MCP STDIO Server")
     logger.info(f"📊 Default image size: {os.getenv('DEFAULT_IMAGE_SIZE', '1024x1024')}")
     
     # Server capabilities
-    server_capabilities = server.get_capabilities(
-        notification_options=NotificationOptions(),
-        experimental_capabilities={},
-    )
-    
-    async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="azure-image-editor",
-                server_version="1.0.0",
-                capabilities=server_capabilities,
-            ),
+    try:
+        logger.info("Getting server capabilities...")
+        server_capabilities = server.get_capabilities(
+            notification_options=NotificationOptions(),
+            experimental_capabilities={},
         )
+        logger.info("Server capabilities retrieved successfully")
+    except Exception:
+        logger.exception("Failed to compute server capabilities")
+        raise
+
+    try:
+        logger.info("Creating STDIO server...")
+        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
+            logger.info("Running MCP server...")
+            await server.run(
+                read_stream,
+                write_stream,
+                InitializationOptions(
+                    server_name="azure-image-editor",
+                    server_version="1.0.0",
+                    capabilities=server_capabilities,
+                ),
+                raise_exceptions=True,
+            )
+    except Exception:
+        logger.exception("Error in server setup")
+        raise
 
 
 if __name__ == "__main__":

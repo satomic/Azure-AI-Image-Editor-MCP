@@ -1,11 +1,9 @@
-import asyncio
 import base64
 import io
 import httpx
 import aiofiles
 from PIL import Image
 from typing import Optional, Union
-import json
 
 
 class AzureImageGenerator:
@@ -165,3 +163,31 @@ class AzureImageGenerator:
             raise Exception(f"Azure API error: {e.response.status_code} - {error_detail}")
         except Exception as e:
             raise Exception(f"Image editing failed: {str(e)}")
+        
+
+if __name__ == "__main__":
+    import asyncio
+    import os
+    from dotenv import load_dotenv
+
+    # Load environment variables
+    load_dotenv()
+
+    async def main():
+        async with AzureImageGenerator(
+            base_url=os.getenv("AZURE_BASE_URL"),
+            api_key=os.getenv("AZURE_API_KEY"),
+            deployment_name=os.getenv("AZURE_DEPLOYMENT_NAME"),
+            api_version=os.getenv("AZURE_API_VERSION", "2025-04-01-preview")
+        ) as client:
+            # Example usage - save to images folder
+            output_path = "images/generated_image.png"
+            os.makedirs("images", exist_ok=True)
+            
+            result = await client.generate_image(
+                prompt="A fantasy landscape",
+                output_path=output_path
+            )
+            print(f"Image saved to: {result}")
+
+    asyncio.run(main())
