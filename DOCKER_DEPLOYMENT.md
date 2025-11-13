@@ -230,6 +230,34 @@ curl -X POST http://localhost:8000/ \
 }
 ```
 
+### 编辑图片
+
+**重要说明**：在 HTTP 模式下，由于服务器无法访问客户端本地文件，需要使用 `image_data_base64` 参数而不是 `image_path`：
+
+```bash
+# 首先将图片转换为 base64
+IMAGE_BASE64=$(base64 -i /path/to/local/image.png)
+
+# 调用编辑图片工具
+curl -X POST http://localhost:8000/ \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"jsonrpc\": \"2.0\",
+    \"id\": 3,
+    \"method\": \"tools/call\",
+    \"params\": {
+      \"name\": \"edit_image\",
+      \"arguments\": {
+        \"image_data_base64\": \"$IMAGE_BASE64\",
+        \"prompt\": \"Make this black and white\",
+        \"output_path\": \"/app/images/edited.png\"
+      }
+    }
+  }"
+```
+
+响应格式与生成图片相同，包含文本消息和 base64 编码的图片数据。
+
 ## 生产环境建议
 
 ### 1. 使用 Docker Secrets

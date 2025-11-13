@@ -234,12 +234,13 @@ curl -X POST http://127.0.0.1:8000/ \
 使用智能尺寸保持功能编辑现有图片
 
 **参数**：
-- `image_path`（必需）：要编辑的图片文件路径
+- `image_path`（STDIO 模式）：要编辑的图片文件路径
+- `image_data_base64`（HTTP 模式）：Base64 编码的图片数据 - **在 HTTP 模式下使用此参数而不是 image_path**
 - `prompt`（必需）：描述如何编辑图片的英文文字提示
 - `size`（可选）：输出图片尺寸，如果未指定则使用原图尺寸
-- `output_path`（可选）：输出文件路径，如果不提供则返回base64编码的图片
+- `output_path`（可选）：输出文件路径（HTTP 模式下为服务器端），图片数据总是会返回给客户端
 
-**示例**：
+**示例（STDIO 模式）**：
 ```json
 {
   "name": "edit_image",
@@ -247,6 +248,18 @@ curl -X POST http://127.0.0.1:8000/ \
     "image_path": "/path/to/input/image.png",
     "prompt": "Make this black and white",
     "output_path": "/path/to/output/edited_image.png"
+  }
+}
+```
+
+**示例（HTTP 模式）**：
+```json
+{
+  "name": "edit_image",
+  "arguments": {
+    "image_data_base64": "iVBORw0KGgoAAAANS...(经 base64 编码的图片)",
+    "prompt": "Make this black and white",
+    "output_path": "/tmp/edited_image.png"
   }
 }
 ```

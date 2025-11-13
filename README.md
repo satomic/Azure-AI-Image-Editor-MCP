@@ -233,12 +233,13 @@ Generate images from text prompts
 Edit existing images with intelligent dimension preservation
 
 **Parameters**:
-- `image_path` (required): Path to the image file to edit
+- `image_path` (STDIO mode): Path to the image file to edit
+- `image_data_base64` (HTTP mode): Base64 encoded image data - **use this instead of image_path in HTTP mode**
 - `prompt` (required): English text description of how to edit the image
 - `size` (optional): Output image size, uses original dimensions if not specified
-- `output_path` (optional): Output file path, returns base64 encoded image if not provided
+- `output_path` (optional): Output file path (server-side in HTTP mode), image data always returned to client
 
-**Example**:
+**Example (STDIO mode)**:
 ```json
 {
   "name": "edit_image",
@@ -246,6 +247,18 @@ Edit existing images with intelligent dimension preservation
     "image_path": "/path/to/input/image.png",
     "prompt": "Make this black and white",
     "output_path": "/path/to/output/edited_image.png"
+  }
+}
+```
+
+**Example (HTTP mode)**:
+```json
+{
+  "name": "edit_image",
+  "arguments": {
+    "image_data_base64": "iVBORw0KGgoAAAANS...(base64 encoded image)",
+    "prompt": "Make this black and white",
+    "output_path": "/tmp/edited_image.png"
   }
 }
 ```

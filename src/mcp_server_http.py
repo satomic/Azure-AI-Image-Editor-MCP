@@ -165,21 +165,25 @@ async def get_tools_list():
                         },
                         "output_path": {
                             "type": "string",
-                            "description": "absolute output file path"
+                            "description": "Optional: output file path (for server-side save). Image data is always returned to client."
                         }
                     },
-                    "required": ["prompt", "size", "output_path"]
+                    "required": ["prompt", "size"]
                 },
             },
             {
                 "name": "edit_image",
-                "description": "Edit existing images using Azure AI Foundry (English prompts only)",
+                "description": "Edit existing images using Azure AI Foundry (English prompts only). In HTTP mode, provide image_data_base64 instead of image_path.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "image_path": {
                             "type": "string",
-                            "description": "Path to the image file to edit"
+                            "description": "Path to the image file to edit (STDIO mode only)"
+                        },
+                        "image_data_base64": {
+                            "type": "string",
+                            "description": "Base64 encoded image data (HTTP mode - use this instead of image_path)"
                         },
                         "prompt": {
                             "type": "string",
@@ -192,10 +196,10 @@ async def get_tools_list():
                         },
                         "output_path": {
                             "type": "string",
-                            "description": "absolute output file path"
+                            "description": "Optional: output file path (for server-side save). Image data is always returned to client."
                         }
                     },
-                    "required": ["image_path", "prompt", "size", "output_path"]
+                    "required": ["prompt"]
                 },
             }
         ]
@@ -302,17 +306,18 @@ async def handle_edit_image(arguments: dict[str, Any]):
     """Handle image editing request"""
     try:
         image_path = arguments.get("image_path")
+        image_data_base64 = arguments.get("image_data_base64")
         prompt = arguments.get("prompt", "") + " (and all other elements exactly the same)"
         size = arguments.get("size")  # Optional size override
         output_path = arguments.get("output_path")
         
-        # Validate input parameters
-        if not image_path:
-            error_msg = "image_path parameter is required"
+        # Validate input parameters - need either image_path or image_data_base64
+        if not image_path and not image_data_base64:
+            error_msg = "Either 'image_path' (STDIO mode) or 'image_data_base64' (HTTP mode) is required"
             logger.error(error_msg)
             return {"content": [{"type": "text", "text": error_msg}]}
         
-        logger.info(f"Image editing request: image_path='{image_path}', prompt='{prompt}', output_path={output_path}")
+        logger.info(f"Image editing request: prompt='{prompt}', has_path={bool(image_path)}, has_base64={bool(image_data_base64)}, output_path={output_path}")
         
         # Get Azure configuration
         try:
@@ -328,53 +333,81 @@ async def handle_edit_image(arguments: dict[str, Any]):
             logger.warning(f"Non-English prompt rejected: '{prompt}'")
             return {"content": [{"type": "text", "text": error_msg}]}
         
-        # Check if input file exists
-        if not os.path.exists(image_path):
-            error_msg = f"Error: Image file not found {image_path}"
-            logger.error(f"Input file does not exist: {image_path}")
-            return {"content": [{"type": "text", "text": error_msg}]}
+        # Prepare image data for processing
+        import tempfile
+        temp_input_path = None
         
-        async with AzureImageGenerator(
-            base_url=azure_config["base_url"],
-            api_key=azure_config["api_key"],
-            deployment_name=azure_config["deployment_name"],
-            model=azure_config["model"],
-            api_version=azure_config["api_version"]
-        ) as generator:
-            
-            # In HTTP mode, always get image bytes for return to client
-            # If output_path is provided, also save to server
-            result = await generator.edit_image(
-                image_path=image_path,
-                prompt=prompt,
-                size=size,
-                output_path=output_path
-            )
-            
-            # HTTP mode: always return image data to client
-            if output_path:
-                # Image was saved to file, read it back
-                import aiofiles
-                async with aiofiles.open(output_path, 'rb') as f:
-                    image_bytes = await f.read()
-                image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-                logger.info(f"Edited image saved to server at: {result} and returning to client (size: {len(image_bytes)} bytes)")
-                return {
-                    "content": [
-                        {"type": "text", "text": f"Image successfully edited. Saved to server at: {result}"},
-                        {"type": "image", "data": image_b64, "mimeType": "image/png"}
-                    ]
-                }
+        try:
+            if image_data_base64:
+                # HTTP mode: decode base64 data and save to temporary file
+                try:
+                    image_bytes = base64.b64decode(image_data_base64)
+                    # Create temporary file
+                    with tempfile.NamedTemporaryFile(mode='wb', suffix='.png', delete=False) as temp_file:
+                        temp_input_path = temp_file.name
+                        temp_file.write(image_bytes)
+                    logger.info(f"Decoded base64 image data and saved to temporary file: {temp_input_path}")
+                    image_path_to_use = temp_input_path
+                except Exception as e:
+                    error_msg = f"Failed to decode base64 image data: {str(e)}"
+                    logger.error(error_msg)
+                    return {"content": [{"type": "text", "text": error_msg}]}
             else:
-                # result is bytes
-                image_b64 = base64.b64encode(result).decode('utf-8')
-                logger.info(f"Image editing successful, returning base64 data (size: {len(result)} bytes)")
-                return {
-                    "content": [
-                        {"type": "text", "text": f"Image editing successful, edit prompt: '{prompt}', source file: {image_path}"},
-                        {"type": "image", "data": image_b64, "mimeType": "image/png"}
-                    ]
-                }
+                # STDIO mode: use provided file path
+                if not os.path.exists(image_path):
+                    error_msg = f"Error: Image file not found {image_path}"
+                    logger.error(f"Input file does not exist: {image_path}")
+                    return {"content": [{"type": "text", "text": error_msg}]}
+                image_path_to_use = image_path
+            
+            async with AzureImageGenerator(
+                base_url=azure_config["base_url"],
+                api_key=azure_config["api_key"],
+                deployment_name=azure_config["deployment_name"],
+                model=azure_config["model"],
+                api_version=azure_config["api_version"]
+            ) as generator:
+                
+                # Edit the image
+                result = await generator.edit_image(
+                    image_path=image_path_to_use,
+                    prompt=prompt,
+                    size=size,
+                    output_path=output_path
+                )
+                
+                # HTTP mode: always return image data to client
+                if output_path:
+                    # Image was saved to file, read it back
+                    import aiofiles
+                    async with aiofiles.open(output_path, 'rb') as f:
+                        image_bytes = await f.read()
+                    image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+                    logger.info(f"Edited image saved to server at: {result} and returning to client (size: {len(image_bytes)} bytes)")
+                    return {
+                        "content": [
+                            {"type": "text", "text": f"Image successfully edited. Saved to server at: {result}"},
+                            {"type": "image", "data": image_b64, "mimeType": "image/png"}
+                        ]
+                    }
+                else:
+                    # result is bytes
+                    image_b64 = base64.b64encode(result).decode('utf-8')
+                    logger.info(f"Image editing successful, returning base64 data (size: {len(result)} bytes)")
+                    return {
+                        "content": [
+                            {"type": "text", "text": f"Image editing successful, edit prompt: '{prompt}'"},
+                            {"type": "image", "data": image_b64, "mimeType": "image/png"}
+                        ]
+                    }
+        finally:
+            # Clean up temporary file if created
+            if temp_input_path and os.path.exists(temp_input_path):
+                try:
+                    os.unlink(temp_input_path)
+                    logger.info(f"Cleaned up temporary file: {temp_input_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up temporary file {temp_input_path}: {e}")
                 
     except Exception as e:
         error_msg = f"Error editing image: {str(e)}"
