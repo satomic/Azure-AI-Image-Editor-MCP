@@ -29,9 +29,9 @@ docker run -d \
 #### 使用 .env 文件
 
 ```bash
-docker run -d \
+docker run -itd --restart=always \
   --name azure-image-editor \
-  -p 8000:8000 \
+  -p 8082:8000 \
   --env-file .env \
   azure-image-editor-mcp:latest
 ```
@@ -39,9 +39,9 @@ docker run -d \
 #### 挂载卷保存生成的图片
 
 ```bash
-docker run -d \
+docker run -itd --restart=always \
   --name azure-image-editor \
-  -p 8000:8000 \
+  -p 8082:8000 \
   -v $(pwd)/images:/app/images \
   -v $(pwd)/logs:/app/logs \
   --env-file .env \
@@ -185,6 +185,12 @@ curl -X POST http://localhost:8000/ \
 
 ### 生成图片
 
+**重要说明**：在 HTTP 模式下，即使提供了 `output_path` 参数，服务器也会：
+1. 将图片保存到服务器的指定路径
+2. **同时**将图片的 base64 数据返回给客户端
+
+这样客户端可以接收到图片数据并保存到本地，而不需要通过额外的文件传输。
+
 ```bash
 curl -X POST http://localhost:8000/ \
   -H "Content-Type: application/json" \
@@ -201,6 +207,27 @@ curl -X POST http://localhost:8000/ \
       }
     }
   }'
+```
+
+响应示例：
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Image successfully generated. Saved to server at: /app/images/sunset.png"
+      },
+      {
+        "type": "image",
+        "data": "iVBORw0KGgoAAAANSUhEUgAA...(base64 encoded image data)",
+        "mimeType": "image/png"
+      }
+    ]
+  }
+}
 ```
 
 ## 生产环境建议

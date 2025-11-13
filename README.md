@@ -162,6 +162,12 @@ When the HTTP server is running, the following endpoints are available:
 
 #### Connecting to HTTP Server
 
+**Important for HTTP Mode**: When using HTTP mode, even if you provide an `output_path` parameter, the server will:
+1. Save the image to the specified path on the server
+2. **Also return** the base64-encoded image data to the client
+
+This allows the MCP client to receive the image data and save it locally without needing additional file transfer.
+
 **Using VSCode MCP Client:**
 
 ```json

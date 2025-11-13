@@ -259,20 +259,30 @@ async def handle_generate_image(arguments: dict[str, Any]):
             api_version=azure_config["api_version"]
         ) as generator:
             
+            # In HTTP mode, always get image bytes for return to client
+            # If output_path is provided, also save to server
             result = await generator.generate_image(
                 prompt=prompt,
                 size=size,
                 output_path=output_path
             )
             
+            # HTTP mode: always return image data to client
             if output_path:
-                logger.info(f"Image saved to file: {result}")
+                # Image was saved to file, read it back
+                import aiofiles
+                async with aiofiles.open(output_path, 'rb') as f:
+                    image_bytes = await f.read()
+                image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+                logger.info(f"Image saved to server at: {result} and returning to client (size: {len(image_bytes)} bytes)")
                 return {
                     "content": [
-                        {"type": "text", "text": f"Image successfully generated and saved to: {result}"}
+                        {"type": "text", "text": f"Image successfully generated. Saved to server at: {result}"},
+                        {"type": "image", "data": image_b64, "mimeType": "image/png"}
                     ]
                 }
             else:
+                # result is bytes
                 image_b64 = base64.b64encode(result).decode('utf-8')
                 logger.info(f"Image generation successful, returning base64 data (size: {len(result)} bytes)")
                 return {
@@ -332,6 +342,8 @@ async def handle_edit_image(arguments: dict[str, Any]):
             api_version=azure_config["api_version"]
         ) as generator:
             
+            # In HTTP mode, always get image bytes for return to client
+            # If output_path is provided, also save to server
             result = await generator.edit_image(
                 image_path=image_path,
                 prompt=prompt,
@@ -339,14 +351,22 @@ async def handle_edit_image(arguments: dict[str, Any]):
                 output_path=output_path
             )
             
+            # HTTP mode: always return image data to client
             if output_path:
-                logger.info(f"Edited image saved to file: {result}")
+                # Image was saved to file, read it back
+                import aiofiles
+                async with aiofiles.open(output_path, 'rb') as f:
+                    image_bytes = await f.read()
+                image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+                logger.info(f"Edited image saved to server at: {result} and returning to client (size: {len(image_bytes)} bytes)")
                 return {
                     "content": [
-                        {"type": "text", "text": f"Image successfully edited and saved to: {result}"}
+                        {"type": "text", "text": f"Image successfully edited. Saved to server at: {result}"},
+                        {"type": "image", "data": image_b64, "mimeType": "image/png"}
                     ]
                 }
             else:
+                # result is bytes
                 image_b64 = base64.b64encode(result).decode('utf-8')
                 logger.info(f"Image editing successful, returning base64 data (size: {len(result)} bytes)")
                 return {
