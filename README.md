@@ -233,13 +233,20 @@ Generate images from text prompts
 Edit existing images with intelligent dimension preservation
 
 **Parameters**:
-- `image_path` (STDIO mode): Path to the image file to edit
-- `image_data_base64` (HTTP mode): Base64 encoded image data - **use this instead of image_path in HTTP mode**
+
+**STDIO mode**:
+- `image_path` (required): Path to the image file to edit
+- `prompt` (required): English text description of how to edit the image
+- `size` (optional): Output image size, uses original dimensions if not specified
+- `output_path` (optional): Output file path
+
+**HTTP mode**:
+- `image_data_base64` (required): Base64 encoded image data
   - Supports raw base64 format: `iVBORw0KGgoAAAANS...`
   - Supports Data URL format: `data:image/png;base64,iVBORw0KGgoAAAANS...`
 - `prompt` (required): English text description of how to edit the image
 - `size` (optional): Output image size, uses original dimensions if not specified
-- `output_path` (optional): Output file path (server-side in HTTP mode), image data always returned to client
+- `output_path` (optional): Output file path (server-side), image data always returned to client
 
 **Example (STDIO mode)**:
 ```json

@@ -173,17 +173,13 @@ async def get_tools_list():
             },
             {
                 "name": "edit_image",
-                "description": "Edit existing images using Azure AI Foundry (English prompts only). In HTTP mode, provide image_data_base64 instead of image_path.",
+                "description": "Edit an existing image with intelligent dimension preservation. Upload image data using base64 encoding.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "image_path": {
-                            "type": "string",
-                            "description": "Path to the image file to edit (STDIO mode only)"
-                        },
                         "image_data_base64": {
                             "type": "string",
-                            "description": "Base64 encoded image data (HTTP mode - use this instead of image_path)"
+                            "description": "Base64 encoded image data. Supports both raw base64 (iVBORw0K...) and Data URL format (data:image/png;base64,iVBORw0K...)"
                         },
                         "prompt": {
                             "type": "string",
@@ -199,7 +195,7 @@ async def get_tools_list():
                             "description": "Optional: output file path (for server-side save). Image data is always returned to client."
                         }
                     },
-                    "required": ["prompt"]
+                    "required": ["image_data_base64", "prompt"]
                 },
             }
         ]
@@ -305,19 +301,18 @@ async def handle_generate_image(arguments: dict[str, Any]):
 async def handle_edit_image(arguments: dict[str, Any]):
     """Handle image editing request"""
     try:
-        image_path = arguments.get("image_path")
         image_data_base64 = arguments.get("image_data_base64")
         prompt = arguments.get("prompt", "") + " (and all other elements exactly the same)"
         size = arguments.get("size")  # Optional size override
         output_path = arguments.get("output_path")
         
-        # Validate input parameters - need either image_path or image_data_base64
-        if not image_path and not image_data_base64:
-            error_msg = "Either 'image_path' (STDIO mode) or 'image_data_base64' (HTTP mode) is required"
+        # Validate input parameters - image_data_base64 is required in HTTP mode
+        if not image_data_base64:
+            error_msg = "'image_data_base64' parameter is required in HTTP mode"
             logger.error(error_msg)
             return {"content": [{"type": "text", "text": error_msg}]}
         
-        logger.info(f"Image editing request: prompt='{prompt}', has_path={bool(image_path)}, has_base64={bool(image_data_base64)}, output_path={output_path}")
+        logger.info(f"Image editing request: prompt='{prompt}', has_base64=True, output_path={output_path}")
         
         # Get Azure configuration
         try:
@@ -338,41 +333,45 @@ async def handle_edit_image(arguments: dict[str, Any]):
         temp_input_path = None
         
         try:
-            if image_data_base64:
-                # HTTP mode: decode base64 data and save to temporary file
+            # Decode base64 data and save to temporary file
+            try:
+                # Handle Data URL format (e.g., "data:image/png;base64,...")
+                base64_data = image_data_base64.strip()
+                if base64_data.startswith('data:'):
+                    # Extract base64 data after the comma
+                    if ',' in base64_data:
+                        base64_data = base64_data.split(',', 1)[1]
+                        logger.info("Detected Data URL format, extracted base64 content")
+                    else:
+                        error_msg = "Invalid Data URL format: missing comma separator"
+                        logger.error(error_msg)
+                        return {"content": [{"type": "text", "text": error_msg}]}
+                
+                # Decode base64 string to bytes
+                image_bytes = base64.b64decode(base64_data)
+                logger.info(f"Decoded base64 image data (size: {len(image_bytes)} bytes)")
+                
+                # Detect image format from the data
+                import io
+                from PIL import Image
                 try:
-                    # Handle Data URL format (e.g., "data:image/png;base64,...")
-                    base64_data = image_data_base64.strip()
-                    if base64_data.startswith('data:'):
-                        # Extract base64 data after the comma
-                        if ',' in base64_data:
-                            base64_data = base64_data.split(',', 1)[1]
-                            logger.info("Detected Data URL format, extracted base64 content")
-                        else:
-                            error_msg = "Invalid Data URL format: missing comma separator"
-                            logger.error(error_msg)
-                            return {"content": [{"type": "text", "text": error_msg}]}
-                    
-                    # Decode base64 string to bytes
-                    image_bytes = base64.b64decode(base64_data)
-                    
-                    # Create temporary file
-                    with tempfile.NamedTemporaryFile(mode='wb', suffix='.png', delete=False) as temp_file:
-                        temp_input_path = temp_file.name
-                        temp_file.write(image_bytes)
-                    logger.info(f"Decoded base64 image data and saved to temporary file: {temp_input_path} (size: {len(image_bytes)} bytes)")
-                    image_path_to_use = temp_input_path
+                    with Image.open(io.BytesIO(image_bytes)) as img:
+                        img_format = img.format.lower() if img.format else 'png'
+                        logger.info(f"Detected image format: {img_format}")
                 except Exception as e:
-                    error_msg = f"Failed to decode base64 image data: {str(e)}"
-                    logger.error(error_msg)
-                    return {"content": [{"type": "text", "text": error_msg}]}
-            else:
-                # STDIO mode: use provided file path
-                if not os.path.exists(image_path):
-                    error_msg = f"Error: Image file not found {image_path}"
-                    logger.error(f"Input file does not exist: {image_path}")
-                    return {"content": [{"type": "text", "text": error_msg}]}
-                image_path_to_use = image_path
+                    logger.warning(f"Could not detect image format, defaulting to png: {e}")
+                    img_format = 'png'
+                
+                # Create temporary file with correct extension
+                with tempfile.NamedTemporaryFile(mode='wb', suffix=f'.{img_format}', delete=False) as temp_file:
+                    temp_input_path = temp_file.name
+                    temp_file.write(image_bytes)
+                logger.info(f"Saved to temporary file: {temp_input_path}")
+                image_path_to_use = temp_input_path
+            except Exception as e:
+                error_msg = f"Failed to decode base64 image data: {str(e)}"
+                logger.error(error_msg)
+                return {"content": [{"type": "text", "text": error_msg}]}
             
             async with AzureImageGenerator(
                 base_url=azure_config["base_url"],
