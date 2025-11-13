@@ -122,9 +122,20 @@ class AzureImageGenerator:
             
             # Get original image dimensions if size not specified
             if not size:
-                with Image.open(io.BytesIO(image_data)) as img:
-                    width, height = img.size
-                    size = f"{width}x{height}"
+                try:
+                    with Image.open(io.BytesIO(image_data)) as img:
+                        width, height = img.size
+                        size = f"{width}x{height}"
+                except Exception as e:
+                    # If we can't read dimensions, try to detect from file path
+                    try:
+                        with Image.open(image_path) as img:
+                            width, height = img.size
+                            size = f"{width}x{height}"
+                    except Exception as e2:
+                        # Default to 1024x1024 if all else fails
+                        size = "1024x1024"
+                        raise Exception(f"Could not determine image dimensions, tried BytesIO and file path: {str(e)}, {str(e2)}")
             
             # Prepare multipart form data
             files = {

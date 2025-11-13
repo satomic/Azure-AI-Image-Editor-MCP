@@ -351,23 +351,30 @@ async def handle_edit_image(arguments: dict[str, Any]):
                 image_bytes = base64.b64decode(base64_data)
                 logger.info(f"Decoded base64 image data (size: {len(image_bytes)} bytes)")
                 
-                # Detect image format from the data
+                # Validate image data by trying to open it with PIL
                 import io
                 from PIL import Image
                 try:
                     with Image.open(io.BytesIO(image_bytes)) as img:
                         img_format = img.format.lower() if img.format else 'png'
-                        logger.info(f"Detected image format: {img_format}")
-                except Exception as e:
-                    logger.warning(f"Could not detect image format, defaulting to png: {e}")
-                    img_format = 'png'
-                
-                # Create temporary file with correct extension
-                with tempfile.NamedTemporaryFile(mode='wb', suffix=f'.{img_format}', delete=False) as temp_file:
-                    temp_input_path = temp_file.name
-                    temp_file.write(image_bytes)
-                logger.info(f"Saved to temporary file: {temp_input_path}")
-                image_path_to_use = temp_input_path
+                        # Verify the image by loading it fully
+                        img.verify()
+                        logger.info(f"Validated image format: {img_format}, size: {img.size}")
+                        
+                        # Re-open for saving (verify() closes the file)
+                        img_for_save = Image.open(io.BytesIO(image_bytes))
+                        
+                        # Create temporary file with correct extension
+                        with tempfile.NamedTemporaryFile(mode='wb', suffix=f'.{img_format}', delete=False) as temp_file:
+                            temp_input_path = temp_file.name
+                            # Save using PIL to ensure valid format
+                            img_for_save.save(temp_file, format=img_format.upper())
+                        logger.info(f"Saved validated image to: {temp_input_path}")
+                        image_path_to_use = temp_input_path
+                except Exception as img_error:
+                    error_msg = f"Invalid image data: {str(img_error)}"
+                    logger.error(f"Image validation failed: {error_msg}")
+                    return {"content": [{"type": "text", "text": error_msg}]}
             except Exception as e:
                 error_msg = f"Failed to decode base64 image data: {str(e)}"
                 logger.error(error_msg)
