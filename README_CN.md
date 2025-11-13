@@ -23,7 +23,8 @@ azure-image-editor/
 ├── .venv/                        # Python虚拟环境
 ├── src/
 │   ├── azure_image_client.py     # Azure API客户端
-│   └── mcp_server.py             # STDIO MCP服务器
+│   ├── mcp_server.py             # STDIO MCP服务器
+│   └── mcp_server_http.py        # HTTP/JSON-RPC MCP服务器
 ├── tests/                        # 测试文件
 ├── logs/                         # 服务器日志
 ├── tmp/                          # 临时文件
@@ -61,7 +62,19 @@ source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 ```
 
-### 配置VSCode MCP
+## 服务器模式
+
+本项目支持两种 MCP 服务器模式：
+
+### 1. STDIO 模式（默认）
+通过标准输入输出通信，适合 VSCode 集成。
+
+### 2. HTTP/JSON-RPC 模式
+通过 HTTP 和 JSON-RPC 2.0 协议通信，适合 Web 应用和远程访问。
+
+## 配置说明
+
+### 配置 STDIO 模式（VSCode MCP）
 
 在VSCode MCP配置中添加：
 
@@ -93,7 +106,103 @@ pip install -r requirements.txt
 
 **重要**：将 `/完整路径/到/` 替换为项目目录的实际绝对路径。
 
-### 可用的MCP工具
+### 配置 HTTP/JSON-RPC 模式
+
+#### 方法 1：使用环境变量直接运行
+
+```bash
+# 激活虚拟环境
+source .venv/bin/activate  # Linux/Mac
+# 或者 .venv\Scripts\activate  # Windows
+
+# 设置环境变量
+export AZURE_BASE_URL="https://your-endpoint.services.ai.azure.com"
+export AZURE_API_KEY="your-api-key"
+export AZURE_DEPLOYMENT_NAME="FLUX.1-Kontext-pro"
+export AZURE_MODEL="flux.1-kontext-pro"
+export AZURE_API_VERSION="2025-04-01-preview"
+
+# 可选：配置服务器主机和端口（默认为 127.0.0.1:8000）
+export MCP_SERVER_HOST="0.0.0.0"  # 监听所有网络接口
+export MCP_SERVER_PORT="8000"      # 服务器端口
+
+# 启动 HTTP 服务器
+python src/mcp_server_http.py
+```
+
+#### 方法 2：使用 .env 文件
+
+在项目根目录创建 `.env` 文件：
+
+```bash
+AZURE_BASE_URL=https://your-endpoint.services.ai.azure.com
+AZURE_API_KEY=your-api-key
+AZURE_DEPLOYMENT_NAME=FLUX.1-Kontext-pro
+AZURE_MODEL=flux.1-kontext-pro
+AZURE_API_VERSION=2025-04-01-preview
+
+# 可选的服务器配置
+MCP_SERVER_HOST=127.0.0.1
+MCP_SERVER_PORT=8000
+DEFAULT_IMAGE_SIZE=1024x1024
+```
+
+然后启动服务器：
+
+```bash
+source .venv/bin/activate
+python src/mcp_server_http.py
+```
+
+#### 服务器端点
+
+当 HTTP 服务器运行时，以下端点可用：
+
+- **JSON-RPC 端点**: `http://127.0.0.1:8000/` - 主要的 JSON-RPC 2.0 端点（POST）
+- **健康检查**: `http://127.0.0.1:8000/health` - 服务器健康状态（GET）
+
+#### 连接到 HTTP 服务器
+
+**使用 VSCode MCP 客户端：**
+
+```json
+{
+  "servers": {
+    "azure-image-editor-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000"
+    }
+  }
+}
+```
+
+**使用 curl：**
+
+```bash
+# 列出可用工具
+curl -X POST http://127.0.0.1:8000/ \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}'
+
+# 调用生成图片工具
+curl -X POST http://127.0.0.1:8000/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "generate_image",
+      "arguments": {
+        "prompt": "A beautiful sunset over mountains",
+        "size": "1024x1024",
+        "output_path": "./images/sunset.png"
+      }
+    }
+  }'
+```
+
+## 可用的MCP工具
 
 #### 1. generate_image
 从文字提示生成图片
@@ -146,6 +255,8 @@ pip install -r requirements.txt
   - `aiofiles`: 异步文件操作
   - `pydantic`: 数据验证
   - `python-dotenv`: 环境变量管理
+  - `starlette`: ASGI 框架，用于 HTTP 服务器（仅 HTTP 模式）
+  - `uvicorn`: ASGI 服务器（仅 HTTP 模式）
 
 - **Azure AI Foundry**:
   - 默认模型: flux.1-kontext-pro（可配置）

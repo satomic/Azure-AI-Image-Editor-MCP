@@ -22,7 +22,8 @@ azure-image-editor/
 ├── .venv/                        # Python virtual environment
 ├── src/
 │   ├── azure_image_client.py     # Azure API client
-│   └── mcp_server.py             # STDIO MCP server
+│   ├── mcp_server.py             # STDIO MCP server
+│   └── mcp_server_http.py        # HTTP/JSON-RPC MCP server
 ├── tests/                        # Test files
 ├── logs/                         # Server logs
 ├── tmp/                          # Temporary files
@@ -60,7 +61,19 @@ source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 ```
 
-### Configure VSCode MCP
+## Server Modes
+
+This project supports two MCP server modes:
+
+### 1. STDIO Mode (Default)
+Communicates via standard input/output. Suitable for VSCode integration.
+
+### 2. HTTP/JSON-RPC Mode
+Communicates via HTTP with JSON-RPC 2.0 protocol. Suitable for web applications and remote access.
+
+## Configuration
+
+### Configure STDIO Mode (VSCode MCP)
 
 Add the following to your VSCode MCP configuration:
 
@@ -92,7 +105,103 @@ Add the following to your VSCode MCP configuration:
 
 **Important**: Replace `/full/path/to/` with the actual absolute path to this project directory.
 
-### Available MCP Tools
+### Configure HTTP/JSON-RPC Mode
+
+#### Option 1: Run directly with environment variables
+
+```bash
+# Activate virtual environment
+source .venv/bin/activate  # Linux/Mac
+# or .venv\Scripts\activate  # Windows
+
+# Set environment variables
+export AZURE_BASE_URL="https://your-endpoint.services.ai.azure.com"
+export AZURE_API_KEY="your-api-key"
+export AZURE_DEPLOYMENT_NAME="FLUX.1-Kontext-pro"
+export AZURE_MODEL="flux.1-kontext-pro"
+export AZURE_API_VERSION="2025-04-01-preview"
+
+# Optional: Configure server host and port (defaults to 127.0.0.1:8000)
+export MCP_SERVER_HOST="0.0.0.0"  # Listen on all interfaces
+export MCP_SERVER_PORT="8000"      # Server port
+
+# Start the HTTP server
+python src/mcp_server_http.py
+```
+
+#### Option 2: Use .env file
+
+Create a `.env` file in the project root:
+
+```bash
+AZURE_BASE_URL=https://your-endpoint.services.ai.azure.com
+AZURE_API_KEY=your-api-key
+AZURE_DEPLOYMENT_NAME=FLUX.1-Kontext-pro
+AZURE_MODEL=flux.1-kontext-pro
+AZURE_API_VERSION=2025-04-01-preview
+
+# Optional server configuration
+MCP_SERVER_HOST=127.0.0.1
+MCP_SERVER_PORT=8000
+DEFAULT_IMAGE_SIZE=1024x1024
+```
+
+Then start the server:
+
+```bash
+source .venv/bin/activate
+python src/mcp_server_http.py
+```
+
+#### Server Endpoints
+
+When the HTTP server is running, the following endpoints are available:
+
+- **JSON-RPC Endpoint**: `http://127.0.0.1:8000/` - Main JSON-RPC 2.0 endpoint (POST)
+- **Health Check**: `http://127.0.0.1:8000/health` - Server health status (GET)
+
+#### Connecting to HTTP Server
+
+**Using VSCode MCP Client:**
+
+```json
+{
+  "servers": {
+    "azure-image-editor-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000"
+    }
+  }
+}
+```
+
+**Using curl:**
+
+```bash
+# List available tools
+curl -X POST http://127.0.0.1:8000/ \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}'
+
+# Call generate_image tool
+curl -X POST http://127.0.0.1:8000/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "generate_image",
+      "arguments": {
+        "prompt": "A beautiful sunset over mountains",
+        "size": "1024x1024",
+        "output_path": "./images/sunset.png"
+      }
+    }
+  }'
+```
+
+## Available MCP Tools
 
 #### 1. generate_image
 Generate images from text prompts
@@ -145,6 +254,8 @@ Edit existing images with intelligent dimension preservation
   - `aiofiles`: Async file operations
   - `pydantic`: Data validation
   - `python-dotenv`: Environment variable management
+  - `starlette`: ASGI framework for HTTP server (HTTP mode only)
+  - `uvicorn`: ASGI server (HTTP mode only)
 
 - **Azure AI Foundry**:
   - Default model: flux.1-kontext-pro (configurable)
