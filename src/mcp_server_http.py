@@ -341,12 +341,26 @@ async def handle_edit_image(arguments: dict[str, Any]):
             if image_data_base64:
                 # HTTP mode: decode base64 data and save to temporary file
                 try:
-                    image_bytes = base64.b64decode(image_data_base64)
+                    # Handle Data URL format (e.g., "data:image/png;base64,...")
+                    base64_data = image_data_base64.strip()
+                    if base64_data.startswith('data:'):
+                        # Extract base64 data after the comma
+                        if ',' in base64_data:
+                            base64_data = base64_data.split(',', 1)[1]
+                            logger.info("Detected Data URL format, extracted base64 content")
+                        else:
+                            error_msg = "Invalid Data URL format: missing comma separator"
+                            logger.error(error_msg)
+                            return {"content": [{"type": "text", "text": error_msg}]}
+                    
+                    # Decode base64 string to bytes
+                    image_bytes = base64.b64decode(base64_data)
+                    
                     # Create temporary file
                     with tempfile.NamedTemporaryFile(mode='wb', suffix='.png', delete=False) as temp_file:
                         temp_input_path = temp_file.name
                         temp_file.write(image_bytes)
-                    logger.info(f"Decoded base64 image data and saved to temporary file: {temp_input_path}")
+                    logger.info(f"Decoded base64 image data and saved to temporary file: {temp_input_path} (size: {len(image_bytes)} bytes)")
                     image_path_to_use = temp_input_path
                 except Exception as e:
                     error_msg = f"Failed to decode base64 image data: {str(e)}"

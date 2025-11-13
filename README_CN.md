@@ -236,6 +236,8 @@ curl -X POST http://127.0.0.1:8000/ \
 **参数**：
 - `image_path`（STDIO 模式）：要编辑的图片文件路径
 - `image_data_base64`（HTTP 模式）：Base64 编码的图片数据 - **在 HTTP 模式下使用此参数而不是 image_path**
+  - 支持纯 base64 格式：`iVBORw0KGgoAAAANS...`
+  - 支持 Data URL 格式：`data:image/png;base64,iVBORw0KGgoAAAANS...`
 - `prompt`（必需）：描述如何编辑图片的英文文字提示
 - `size`（可选）：输出图片尺寸，如果未指定则使用原图尺寸
 - `output_path`（可选）：输出文件路径（HTTP 模式下为服务器端），图片数据总是会返回给客户端
@@ -257,7 +259,19 @@ curl -X POST http://127.0.0.1:8000/ \
 {
   "name": "edit_image",
   "arguments": {
-    "image_data_base64": "iVBORw0KGgoAAAANS...(经 base64 编码的图片)",
+    "image_data_base64": "iVBORw0KGgoAAAANS...",
+    "prompt": "Make this black and white",
+    "output_path": "/tmp/edited_image.png"
+  }
+}
+```
+
+或使用 Data URL 格式：
+```json
+{
+  "name": "edit_image",
+  "arguments": {
+    "image_data_base64": "data:image/png;base64,iVBORw0KGgoAAAANS...",
     "prompt": "Make this black and white",
     "output_path": "/tmp/edited_image.png"
   }

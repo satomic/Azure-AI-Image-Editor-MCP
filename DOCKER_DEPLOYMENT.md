@@ -232,13 +232,16 @@ curl -X POST http://localhost:8000/ \
 
 ### 编辑图片
 
-**重要说明**：在 HTTP 模式下，由于服务器无法访问客户端本地文件，需要使用 `image_data_base64` 参数而不是 `image_path`：
+**重要说明**：在 HTTP 模式下，由于服务器无法访问客户端本地文件，需要使用 `image_data_base64` 参数而不是 `image_path`。
+
+**支持的 base64 格式：**
+- 纯 base64 字符串：`iVBORw0KGgoAAAANS...`
+- Data URL 格式：`data:image/png;base64,iVBORw0KGgoAAAANS...`
 
 ```bash
-# 首先将图片转换为 base64
+# 方法 1: 使用纯 base64 格式
 IMAGE_BASE64=$(base64 -i /path/to/local/image.png)
 
-# 调用编辑图片工具
 curl -X POST http://localhost:8000/ \
   -H "Content-Type: application/json" \
   -d "{
@@ -254,6 +257,25 @@ curl -X POST http://localhost:8000/ \
       }
     }
   }"
+```
+
+```bash
+# 方法 2: 使用 Data URL 格式（某些工具自动生成此格式）
+curl -X POST http://localhost:8000/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "edit_image",
+      "arguments": {
+        "image_data_base64": "data:image/png;base64,iVBORw0KGgoAAAANS...",
+        "prompt": "Make this black and white",
+        "output_path": "/app/images/edited.png"
+      }
+    }
+  }'
 ```
 
 响应格式与生成图片相同，包含文本消息和 base64 编码的图片数据。

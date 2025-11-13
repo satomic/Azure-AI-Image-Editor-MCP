@@ -235,6 +235,8 @@ Edit existing images with intelligent dimension preservation
 **Parameters**:
 - `image_path` (STDIO mode): Path to the image file to edit
 - `image_data_base64` (HTTP mode): Base64 encoded image data - **use this instead of image_path in HTTP mode**
+  - Supports raw base64 format: `iVBORw0KGgoAAAANS...`
+  - Supports Data URL format: `data:image/png;base64,iVBORw0KGgoAAAANS...`
 - `prompt` (required): English text description of how to edit the image
 - `size` (optional): Output image size, uses original dimensions if not specified
 - `output_path` (optional): Output file path (server-side in HTTP mode), image data always returned to client
@@ -256,7 +258,19 @@ Edit existing images with intelligent dimension preservation
 {
   "name": "edit_image",
   "arguments": {
-    "image_data_base64": "iVBORw0KGgoAAAANS...(base64 encoded image)",
+    "image_data_base64": "iVBORw0KGgoAAAANS...",
+    "prompt": "Make this black and white",
+    "output_path": "/tmp/edited_image.png"
+  }
+}
+```
+
+Or using Data URL format:
+```json
+{
+  "name": "edit_image",
+  "arguments": {
+    "image_data_base64": "data:image/png;base64,iVBORw0KGgoAAAANS...",
     "prompt": "Make this black and white",
     "output_path": "/tmp/edited_image.png"
   }
